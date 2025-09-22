@@ -12,7 +12,7 @@ from models.condition.fm_conditioner.pretrained import load_model_and_alphabet_l
 import lightning.pytorch as pl
 
 CH_FOLD = 1
-cond_ckpt_path = '../ckpt/cond_ckpt'
+cond_ckpt_path = './ckpt/cond_ckpt'
 
 
 def add_model_args(parser):
@@ -73,7 +73,7 @@ class DiffusionRNA2dPrediction(nn.Module):
         self.u_conditioner.load_state_dict(torch.load(join(cond_ckpt_path, self.u_ckpt), map_location='cpu'))
         condition_out = nn.Conv2d(int(32 * CH_FOLD), self.cond_dim, kernel_size=1, stride=1, padding=0)
         self.u_conditioner.Conv_1x1 = condition_out
-        self.u_conditioner.requires_grad_(True)
+        self.u_conditioner.requires_grad_(True)    # lql chganged to False
 
     def get_alphabet(self):
         return self.alphabet
@@ -88,7 +88,7 @@ class DiffusionRNA2dPrediction(nn.Module):
 
         with torch.no_grad():
             backbone_result = self.fm_conditioner(data_seq_raw, need_head_weights=False, repr_layers=[12],
-                                                  return_contacts=True)
+                                                  return_contacts=True)    #lql true->false
             fm_embedding = backbone_result['representations'][12]
             fm_embedding = fm_embedding[:, 1:-1, :]
 

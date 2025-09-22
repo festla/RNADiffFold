@@ -6,7 +6,7 @@ import numpy as np
 import math
 from itertools import product
 
-CH_FOLD = 1
+CH_FOLD = 1    # 本来是1
 
 
 class Mish(nn.Module):

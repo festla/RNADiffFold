@@ -34,7 +34,7 @@ class ParserData(object):
         self.path = path
         self.data = self.load_data(self.path)
         self.len = len(self.data)
-        self.seq_max_len = max([x.length for x in self.data])
+        self.seq_max_len = max([x.seq_raw for x in self.data])
         self.set_max_len = (self.seq_max_len // 80 + int(self.seq_max_len % 80 != 0)) * 80
 
     def load_data(self, path):
@@ -55,20 +55,37 @@ class ParserData(object):
 
     def preprocess_data(self):
         shuffle(self.data)
-        contact_list = [item.contact for item in self.data]
-        data_fcn_2_list = [item.data_fcn_2 for item in self.data]
-        data_seq_raw_list = [item.seq_raw for item in self.data]
-        data_length_list = [item.length for item in self.data]
-        data_name_list = [item.name for item in self.data]
+        contact_list = [item.name for item in self.data]
+        data_fcn_2_list = [item.contact for item in self.data]
+        data_seq_raw_list = [item.data_fcn_2 for item in self.data]
+        data_length_list = [item.seq_raw for item in self.data]
+        data_name_list = [item.length for item in self.data]
+    
+        T = max(data_length_list)  # 或者更省内存：T = max(data_length_list)
 
-        contact_array = np.stack(contact_list, axis=0)
-        data_fcn_2_array = np.stack(data_fcn_2_list, axis=0)
+        def pad_pairs(pairs, T, pad_val=-1):
+            arr = np.asarray(pairs, dtype=np.int64)
+            if arr.ndim == 1:
+                arr = arr.reshape(-1, 2)
+            out = np.full((T, 2), pad_val, dtype=arr.dtype)
+            L = min(arr.shape[0], T)
+            out[:L, :2] = arr[:L, :2]
+            return out
+
+        def pad_LC(a, T, pad_val=0):  # 把 (L,4) pad 成 (T,4)
+            a = np.asarray(a)
+            out = np.full((T, a.shape[1]), pad_val, dtype=a.dtype)
+            out[:min(a.shape[0], T), :a.shape[1]] = a[:min(a.shape[0], T), :a.shape[1]]
+            return out
+
+        contact_array    = np.stack([pad_pairs(p, T) for p in contact_list], axis=0)   # (B,T,2)
+        data_fcn_2_array = np.stack([pad_LC(f, T)   for f in data_fcn_2_list], axis=0) # (B,T,4)
 
         data_seq_encode_list = list(map(lambda x: seq_encoding(x), data_seq_raw_list))
-        data_seq_encode_pad_list = list(map(lambda x: self.padding(x, self.set_max_len), data_seq_encode_list))
+        data_seq_encode_pad_list = list(map(lambda x: self.padding(x, T), data_seq_encode_list))
         data_seq_encode_pad_array = np.stack(data_seq_encode_pad_list, axis=0)
 
-        return contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, self.set_max_len, data_seq_encode_pad_array
+        return contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, T, data_seq_encode_pad_array
 
 
 class Dataset(data.Dataset):

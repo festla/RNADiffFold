@@ -148,7 +148,7 @@ class Block(nn.Module):
             self,
             dim,
             dim_out,
-            groups=8,
+            groups=4,    # lql changed from 8 to 4 ,to satisfy diffusion_dim 8->4
     ):
         super().__init__()
         self.block = nn.Sequential(
@@ -169,7 +169,7 @@ class ResnetBlock(nn.Module):
             *,
             time_emb_dim=None,
             cond_dim=None,
-            groups=8,
+            groups=4,
     ):
         super().__init__()
 
@@ -316,30 +316,30 @@ class SegmentationUnet2DCondition(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(nn.ModuleList([
-                ResnetBlock(dim_in, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
-                ResnetBlock(dim_out, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
+                ResnetBlock(dim_in, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
+                ResnetBlock(dim_out, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
                 Residual(Rezero(LinearAttention(dim_out))),
                 Downsample_SP_conv(dim_out) if not is_last else nn.Identity(),
                 Downsample_SP_conv(self.cond_dim) if not is_last else nn.Identity()
             ]))
 
         mid_dim = dims[-1]
-        self.mid_blocks1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
+        self.mid_blocks1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
         self.mid_attn = Residual(Rezero(LinearAttention(mid_dim)))
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind >= (num_resolutions - 1)
             self.ups.append(nn.ModuleList([
-                ResnetBlock(dim_out * 2, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
+                ResnetBlock(dim_out * 2, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
                 Residual(Rezero(LinearAttention(dim_out))),
                 Upsample_new(dim_out) if not is_last else nn.Identity(),
-                ResnetBlock(dim_out, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
-                ResnetBlock(dim_in, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
+                ResnetBlock(dim_out, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
+                ResnetBlock(dim_in, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
             ]))
 
         out_dim = num_classes
-        self.res_conv = ResnetBlock(dim, dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
+        self.res_conv = ResnetBlock(dim, dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
         self.out_conv = nn.Conv2d(dim, out_dim, 1)
 
     def forward(
