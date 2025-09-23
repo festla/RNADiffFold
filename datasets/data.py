@@ -18,7 +18,7 @@ def add_data_args(parser):
     # Train params
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--eval_batch_size', type=int, default=1)
-    parser.add_argument('--num_workers', type=int, default=16)
+    parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--pin_memory', type=eval, default=False)
 
 

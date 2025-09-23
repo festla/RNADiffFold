@@ -148,7 +148,7 @@ class Block(nn.Module):
             self,
             dim,
             dim_out,
-            groups=4,    # lql changed from 8 to 4 ,to satisfy diffusion_dim 8->4
+            groups=8,    # lql changed from 8 to 4 ,to satisfy diffusion_dim 8->4
     ):
         super().__init__()
         self.block = nn.Sequential(
@@ -169,7 +169,7 @@ class ResnetBlock(nn.Module):
             *,
             time_emb_dim=None,
             cond_dim=None,
-            groups=4,
+            groups=8,
     ):
         super().__init__()
 
@@ -316,30 +316,30 @@ class SegmentationUnet2DCondition(nn.Module):
             is_last = ind >= (num_resolutions - 1)
 
             self.downs.append(nn.ModuleList([
-                ResnetBlock(dim_in, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
-                ResnetBlock(dim_out, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
+                ResnetBlock(dim_in, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
+                ResnetBlock(dim_out, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
                 Residual(Rezero(LinearAttention(dim_out))),
                 Downsample_SP_conv(dim_out) if not is_last else nn.Identity(),
                 Downsample_SP_conv(self.cond_dim) if not is_last else nn.Identity()
             ]))
 
         mid_dim = dims[-1]
-        self.mid_blocks1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
+        self.mid_blocks1 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
         self.mid_attn = Residual(Rezero(LinearAttention(mid_dim)))
-        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
+        self.mid_block2 = ResnetBlock(mid_dim, mid_dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
 
         for ind, (dim_in, dim_out) in enumerate(reversed(in_out)):
             is_last = ind >= (num_resolutions - 1)
             self.ups.append(nn.ModuleList([
-                ResnetBlock(dim_out * 2, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
+                ResnetBlock(dim_out * 2, dim_out, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
                 Residual(Rezero(LinearAttention(dim_out))),
                 Upsample_new(dim_out) if not is_last else nn.Identity(),
-                ResnetBlock(dim_out, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4),
-                ResnetBlock(dim_in, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
+                ResnetBlock(dim_out, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8),
+                ResnetBlock(dim_in, dim_in, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
             ]))
 
         out_dim = num_classes
-        self.res_conv = ResnetBlock(dim, dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=4)
+        self.res_conv = ResnetBlock(dim, dim, time_emb_dim=dim, cond_dim=self.cond_dim, groups=8)
         self.out_conv = nn.Conv2d(dim, out_dim, 1)
 
     def forward(
@@ -351,11 +351,12 @@ class SegmentationUnet2DCondition(nn.Module):
             seq_encoding
     ):
         x_shape = x.shape[1:]
-        if len(x.size()) == 3:
-            x = x.unsqueeze(1)
+        if len(x.size()) == 3:    # x是三维的时候在dim=1补一维
+            x = x.unsqueeze(1)    # x.shape = (B, C, H, W)
 
         B, C, H, W = x.size()
-
+        # print((B, C, H, W))
+        # import pdb;pdb.set_trace()
         x = self.embedding(x)
         assert x.shape == (B, C, H, W, self.dim)
         x = x.permute(0, 1, 4, 2, 3)
@@ -426,9 +427,17 @@ if __name__ == '__main__':
     t_emb = torch.randint(0, 1000, [2])
     u_cond = torch.randn([2, 8, 160, 160])
     fm_cond = torch.randn([2, 160, 640])
-    print(len(fm_cond))
+
+    seq_encoding = torch.randn([2, 160, 4])
+    print({
+        "x": getattr(x, "shape", None),
+        "t_emb": getattr(t_emb, "shape", None),
+        "u_cond": getattr(u_cond, "shape", None),
+        "fm_cond": getattr(fm_cond, "shape", None),
+        "seq_encoding": getattr(seq_encoding, "shape", None),
+        })
     model = SegmentationUnet2DCondition(2, 8, 8, 1000, learned_time_emb=True, cat_cond=True)
-    # out = model(x, t_emb, cond)
-    # print(out)
+    out = model(t_emb, x, fm_cond, u_cond, seq_encoding)
+    print(out)
     flops, params = profile(model, inputs=(t_emb, x, fm_cond, u_cond))
     print(flops, params)

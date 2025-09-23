@@ -29,7 +29,7 @@ def get_model_id(args):
     return 'multinomial_diffusion'
 
 
-class DiffusionRNA2dPrediction(nn.Module):
+class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调用了MultinomialDiffusion（SegmentationUnet2DCondition），这两个分别对应模型的加噪和去噪过程；
     def __init__(self,
                  num_classes,
                  diffusion_dim,
@@ -48,8 +48,7 @@ class DiffusionRNA2dPrediction(nn.Module):
         self.u_ckpt = u_ckpt
 
         # condition
-        self.fm_conditioner, self.alphabet = load_model_and_alphabet_local(
-            join(cond_ckpt_path, 'RNA-FM_pretrained.pth'))
+        self.fm_conditioner, self.alphabet = load_model_and_alphabet_local(join(cond_ckpt_path, 'RNA-FM_pretrained.pth'))
         self.u_conditioner = None
         self.load_u_conditioner()
 
@@ -62,7 +61,7 @@ class DiffusionRNA2dPrediction(nn.Module):
             dropout=self.dp_rate
         )
 
-        self.diffusion = MultinomialDiffusion(
+        self.diffusion = MultinomialDiffusion(  
             self.num_classes,
             self.diffusion_steps,
             self.denoise_layer
@@ -116,7 +115,7 @@ class DiffusionRNA2dPrediction(nn.Module):
         return u_condition
 
     def forward(self,
-                x_0,
+                x_0,    # 这里的x_0就是数据中的contact字段；但是只是配对列表，没有转为L*L的二维接触矩阵，所以这里应该是有什么问题；
                 data_fcn_2,
                 data_seq_raw,
                 contact_masks,
@@ -124,11 +123,11 @@ class DiffusionRNA2dPrediction(nn.Module):
                 data_seq_encoding
                 ):
 
-        fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
+        # fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
 
         u_condition = self.get_ufold_condition(data_fcn_2)
 
-        loss = self.diffusion(x_0, fm_condition, u_condition, contact_masks, data_seq_encoding)
+        loss = self.diffusion(x_0, u_condition, contact_masks, data_seq_encoding)    #  '''fm_condition,''' 
 
         loglik_bpd = -loss.sum()/(math.log(2) * x_0.shape.numel())
         return loglik_bpd

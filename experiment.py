@@ -32,7 +32,7 @@ class Experiment(DiffusionExperiment):
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
             contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
-
+            
             loss = self.model(contact, data_fcn_2, data_seq_raw, contact_masks, set_max_len, data_seq_encoding)
             loss.backward()
 
@@ -166,3 +166,46 @@ class Experiment(DiffusionExperiment):
             print('')
         return {'f1': F1, 'precision': precision, 'recall': recall,
                 'sensitivity': sensitivity, 'specificity': specificity, 'accuracy': accuracy, 'mcc': MCC}, f1_pre_rec_df
+
+'''
+print(f"contact       -> shape={tuple(contact.shape)}, dtype={contact.dtype}, device={contact.device}")
+print( contact[0, :, :min(5, contact.shape[-2]), :min(5, contact.shape[-1])] )
+
+print(f"data_fcn_2 -> shape={tuple(data_fcn_2.shape)}, dtype={data_fcn_2.dtype}, device={data_fcn_2.device}")
+C, H, W = data_fcn_2.shape
+print(data_fcn_2[:min(3, C), :min(5, H), :min(5, W)])
+
+print(f"matrix_rep    -> shape={tuple(matrix_rep.shape)}, dtype={matrix_rep.dtype}, device={matrix_rep.device}")
+print( matrix_rep[0, :, :min(5, matrix_rep.shape[-2]), :min(5, matrix_rep.shape[-1])] )
+
+print(f"data_length   -> shape={tuple(data_length.shape)}, dtype={data_length.dtype}, device={data_length.device}")
+print( data_length )
+
+# data_seq_raw 既可能是 Tensor 也可能是 list[str]，两种都处理
+if torch.is_tensor(data_seq_raw):
+    print(f"data_seq_raw  -> shape={tuple(data_seq_raw.shape)}, dtype={data_seq_raw.dtype}, device={data_seq_raw.device}")
+    print( data_seq_raw if data_seq_raw.numel() <= 32 else data_seq_raw.view(-1)[:32] )
+else:
+    print(f"data_seq_raw  -> type={type(data_seq_raw).__name__}, len={len(data_seq_raw)}")
+    print( data_seq_raw[:2] )
+
+print(f"data_seq_encoding -> shape={tuple(data_seq_encoding.shape)}, dtype={data_seq_encoding.dtype}, device={data_seq_encoding.device}")
+if data_seq_encoding.dim() == 3:
+    # [B, L, 4] 或 [B, 4, L]，都打印前 5 行
+    if data_seq_encoding.shape[-1] == 4:   # [B, L, 4]
+        print( data_seq_encoding[0, :min(5, data_seq_encoding.shape[1]), :] )
+    elif data_seq_encoding.shape[1] == 4:  # [B, 4, L]
+        print( data_seq_encoding[0, :, :min(5, data_seq_encoding.shape[2])] )
+    else:
+        print( data_seq_encoding[0, :min(5, data_seq_encoding.shape[1]), :min(5, data_seq_encoding.shape[2])] )
+else:
+    print( data_seq_encoding )
+
+print(f"contact_masks -> shape={tuple(contact_masks.shape)}, dtype={contact_masks.dtype}, device={contact_masks.device}")
+if contact_masks.dim() == 4:
+    print( contact_masks[0, :, :min(5, contact_masks.shape[-2]), :min(5, contact_masks.shape[-1])] )
+elif contact_masks.dim() == 3:
+    print( contact_masks[0, :min(5, contact_masks.shape[-2]), :min(5, contact_masks.shape[-1])] )
+else:
+    print( contact_masks )
+import pdb;pdb.set_trace()'''
