@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import collections
 import os
+import pdb
 import pickle as cPickle
 from os.path import join
 from random import shuffle
@@ -34,13 +35,6 @@ class ParserData(object):
         self.path = path
         self.data = self.load_data(self.path)
         self.len = len(self.data)
-        '''for x in self.data:
-            print(f"data_fcn_2: {x.contact}")
-            print(f"seq_raw: {x.data_fcn_2}")
-            print(f"length: {x.seq_raw}")
-            print(f"name: {x.length}")
-            print(f"contact: {x.name}")
-            import pdb; pdb.set_trace()'''
         self.seq_max_len = max([x.seq_raw for x in self.data])
         self.set_max_len = (self.seq_max_len // 80 + int(self.seq_max_len % 80 != 0)) * 80
 
@@ -80,19 +74,30 @@ class ParserData(object):
             out = np.zeros((T,4), dtype=np.float32)
             out[:a.shape[0]] = a.astype(np.float32)
             return out
-        # print(data_fcn_2_list[0].shape)   (90, 4)
-        # import pdb;pdb.set_trace()
+
         contact_array    = np.stack([pairs2map_padded(self, pairs=p, L=L, T=T) for p, L in zip(contact_list, data_length_list)], axis=0)   # (10789,1,L,2)->(10789,1,T,T)
-        # print(contact_array.shape)    (10794, 498, 498)
-        # import pdb;pdb.set_trace()
         data_fcn_2_array = np.stack([pad_L4(f, T) for f in data_fcn_2_list], axis=0)  
-        # print(data_fcn_2_array.shape)    # (10794, T=498, 4)
-        # import pdb;pdb.set_trace()
+
 
         data_seq_encode_list = list(map(lambda x: seq_encoding(x), data_seq_raw_list))    # 这一步就是把碱基字符串转为one-hot编码
         data_seq_encode_pad_list = list(map(lambda x: self.padding(x, T), data_seq_encode_list))
         data_seq_encode_pad_array = np.stack(data_seq_encode_pad_list, axis=0)
-
+        '''
+        print(f"contact_array.shape:{contact_array.shape}")             # contact_array.shape:(10794, 498, 498)堆叠在一起的contact
+        print(f"data_fcn_2_array.shape:{data_fcn_2_array.shape}")       # data_fcn_2_array.shape:(10794, 498, 4)堆叠在一起的one-hot
+        print(f"data_seq_raw_list.len:{len(data_seq_raw_list)}")        # data_seq_raw_list.len:10794 序列个数（字符串列表）
+        print(f"data_seq_raw_list[0]:{data_seq_raw_list[0]}")           # data_seq_raw_list[0]:GCAUAAAAAAAGCCACGGUUCUCACCGUGGCAAAAUCCAACAUAGCUAAAUUAAAAAUAAUCAGGAGGGCUGCCCGCCG
+        print(f"data_seq_raw_list[0].len:{len(data_seq_raw_list[0])}")  # data_seq_raw_list[0].len:79 第一个样本序列长度
+        print(f"data_length_list.len:{len(data_length_list)}")          # data_length_list.len:10794  所有样本长度的列表
+        print(f"data_length_list[0]:{data_length_list[0]}")             # data_length_list[0]:79      样本长度的列表的第一个元素
+        print(f"data_seq_encode_list.len: {len(data_seq_encode_list)}") # 10794
+        print(f"data_seq_encode_list[0]: {data_seq_encode_list[0]}")
+        print(f"data_seq_encode_list[0].len: {len(data_seq_encode_list[0])}")    # data_seq_encode_list[0]: [[0 0 0 1] [0 0 1 0] ... [0 0 0 1]]
+        print(f"data_fcn_2_array[0]: {data_fcn_2_array[0]}")            # data_fcn_2_array[0]: [[0. 0. 0. 1.]  [0. 0. 1. 0.] ... [0. 0. 0. 0.]]这里是pad了
+        print(f"data_fcn_2_array[0].len: {len(data_fcn_2_array[0])}")
+        #print(f"data_seq_encode_pad_list[0]: {data_seq_encode_pad_list[0]}")
+        #print(f"data_seq_encode_pad_array[0]: {data_seq_encode_pad_array[0]}")
+        import pdb;pdb.set_trace()'''
         return contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, T, data_seq_encode_pad_array
 
 
@@ -114,23 +119,28 @@ class Dataset(data.Dataset):
         else:
             raise ValueError('data_root is empty')
 
-        self.samples = samples
-        if self.upsampling:
-            self.samples = self.upsampling_data()
-        
-        self.file_paths = self.samples
-        # 加一个扁平索引
-        self.index = []
-        for p in self.file_paths:
-            with open(p, 'rb') as f:
-                arr = cPickle.load(f)
-            for i in range(len(arr)):
-                self.index.append((p, i))
-        
-        self._cache_path = None
-        self._cache_data = None
+        self.samples = samples    # 这里的samples就是文件目录的字符串列表
 
-    @staticmethod    # 逻辑上归属于类，但不依赖实例和类本身的函数。
+        self.index = []        # [(file_idx, local_idx, length),...]
+        self.sample_sizes = [] # 每个文件的样本个数（大小）
+        # print(f"samples.size: {len(samples)}") samples.size: 1
+        for fi, p in enumerate(self.samples):
+            with open(p, 'rb') as f:
+                load_data = cPickle.load(f)
+            lens = [item.seq_raw for item in load_data]
+            self.sample_sizes.append(len(load_data))
+            # print(f"self.sample_sizes: {self.sample_sizes}") self.sample_sizes: [10794]
+            # import pdb;pdb.set_trace()
+            for li, L in enumerate(lens):
+                self.index.append((fi, li, int(L)))
+
+        if self.upsampling:
+            self.upsampling_data()
+        
+        self._cache_file_idx = None
+        self._cache_data_list = None
+
+    @staticmethod
     def make_dataset(
             directory: str
     ) -> List[str]:
@@ -138,98 +148,55 @@ class Dataset(data.Dataset):
 
     # for data balance, 4 times for 160~320 & 320~640
     def upsampling_data(self):
-        RNA_SS_data = collections.namedtuple('RNA_SS_data', ' contact data_fcn_2 seq_raw length name')
-        augment_data_list = list()
-        final_data_list = self.samples
-        for data_path in final_data_list:
-            with open(data_path, 'rb') as f:
-                load_data = cPickle.load(f)
-            max_len = max([x.seq_raw for x in load_data])
-            if max_len == 160:
-                continue
-            elif max_len == 320:
-                augment_data_list.append(data_path)
-            elif max_len == 640:
-                augment_data_list.append(data_path)
-
-        augment_data_list = list(np.random.choice(augment_data_list, 3 * len(augment_data_list)))
-        final_data_list.extend(augment_data_list)
-        shuffle(final_data_list)
-        return final_data_list
+        import random
+        new_index = []
+        for fi, li, L in self.index:
+            k = 4 if L in (320, 640) else 1
+            new_index.extend([(fi, li, L)] * k)
+        random.shuffle(new_index)
+        self.index = new_index
 
     def __len__(self) -> int:
         'Denotes the total number of samples'
-        # return len(self.samples)
         return len(self.index)
 
-    # 增加读缓存
-    def _load_file(self, path):
-        if self._cache_path != path:
-            with open(path, 'rb') as f:
-                self._cache_data = cPickle.load(f)
-            self._cache_path = path
-        return self._cache_data
-
     def __getitem__(self, index: int):
-        try:
-            path, inner_idx = self.index[index]
-            data_list = self._load_file(path)
-            item = data_list[inner_idx]
-            # 字段含义对齐你之前的注释：
-            # item.name       -> contact 的配对列表 (pairs)
-            # item.contact    -> data_fcn_2 的 (L,4) one-hot
-            # item.data_fcn_2 -> 原始序列字符串
-            # item.seq_raw    -> 序列长度 L
-            # item.length     -> 名字
-            L = int(item.seq_raw)
-            contact = item.name
-            data_fcn_2 = np.asarray(item.contact, dtype=np.float32)  # (L,4)
-            seq_raw = item.data_fcn_2
-            name = item.length
-            #print(f"contact_before(L*L): {contact}")
-            # contact -> (1, L, L)
-            M = pairs2map(contact, L)  # 用下面的 pairs2map 实现
-            contact = torch.from_numpy(M).unsqueeze(0).long()
-            #torch.set_printoptions(profile="full")   
-            #print(f"contact_after(L*L): {contact}")
-            #import pdb;pdb.set_trace()
-            
-            data_fcn_2 = torch.from_numpy(data_fcn_2).float()    # data_fcn_2 保持 (L,4)，pad 交给 collate_fn
-            # 额外返回一个 seq_encoding 版（也是 (L,4)），供你后续需要
-            seq_enc = torch.from_numpy(seq_encoding(seq_raw)).float()
-            data_length = 
+        fi, li, L = self.index[index]
 
-            # 注意：按你原来的接口，这里把字符串和名字放到 list，便于 collate_fn extend
-            return contact, data_fcn_2, seq_raw, data_length, name, L, seq_enc
+        if self._cache_file_idx != fi:
+            with open(self.samples[fi], 'rb') as f:
+                self._cache_data_list = cPickle.load(f)
+            self._cache_file_idx = fi
 
-        except Exception as e:
-            print(f"Error in __getitem__ at index {index}: {e}")
-            raise
+        data_list = self._cache_data_list
 
-    '''
-    def __getitem__(self, index: int):
-        try:
-            batch_data_path = self.samples[index]
-            batch_data = ParserData(batch_data_path)
+        item = data_list[li]
+        length = item.seq_raw
+        contact = item.name
+        data_fcn_2 = item.contact
+        seq_raw = item.data_fcn_2
+        name = item.length
 
-            contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, set_max_len, data_seq_encode_pad_array = batch_data.preprocess_data()
+        '''print(f"length: {length}")
+        print(f"contact: {contact}")
+        print(f"data_fcn_2: {data_fcn_2}")
+        print(f"seq_raw: {seq_raw}")
+        print(f"name: {name}")
+        pdb.set_trace()'''
+        '''batch_data_path = self.samples[index]
+        batch_data = ParserData(batch_data_path)
 
-            contact = torch.tensor(contact_array).unsqueeze(1).long()
-            data_fcn_2 = torch.tensor(data_fcn_2_array).float()
-            # print(f"contact:{contact}")
-            # print(f"contact_shape:{contact.shape}")          # contact_shape:torch.Size([10794, 1, 498, 498])
-            # print(f"data_fcn_2:{data_fcn_2}")
-            # print(f"data_fcn_2_shape:{data_fcn_2.shape}")    # data_fcn_2_shape:torch.Size([10794, 498, 4])
-            # import pdb;pdb.set_trace()
-            data_length = torch.tensor(data_length_list).long()
+        contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, set_max_len, \
+        data_seq_encode_pad_array = batch_data.preprocess_data()
 
-            data_seq_encode_pad = torch.tensor(data_seq_encode_pad_array).float()
+        contact = torch.tensor(contact_array).unsqueeze(1).long()
+        data_fcn_2 = torch.tensor(data_fcn_2_array).float()
+        data_length = torch.tensor(data_length_list).long()
+        data_seq_encode_pad = torch.tensor(data_seq_encode_pad_array).float()'''
 
-            return contact, data_fcn_2, data_seq_raw_list, data_length, data_name_list, set_max_len, data_seq_encode_pad
-        except Exception as e:
-            print(f"Error in __getitem__ at index {index}: {e}")
-            raise
-    '''
+        return contact, data_fcn_2, seq_raw, length, name
+
+
 
 def generate_token_batch(alphabet, seq_strs):
     batch_size = len(seq_strs)
@@ -253,7 +220,34 @@ def generate_token_batch(alphabet, seq_strs):
             tokens[i, len(seq_str) + int(alphabet.prepend_bos)] = alphabet.eos_idx
     return tokens
 
+def diff_collate_fn(batch, alphabet):
+    """
+    batch: List[tuple]，每个元素对应 __getitem__ 的返回：
+           (contact_pairs, data_fcn_2_onehot[L,4], seq_raw_str, length_int, name)
+    返回：
+      contact: torch.bool   [B,1,T,T]
+      data_fcn_2: torch.f32 [B,T,4]
+      tokens: torch.int64   [B, T'(+BOS/EOS)]
+      data_length: torch.i64[B]
+      data_name: list(len=B)
+      set_max_len: int (=T)
+      data_seq_encode_pad: torch.f32 [B,T,4]
+    """
+    contact_pairs_list, fcn2_list_np, seq_list, length_list, name_list = zip(*batch)
+    lengths = list(map(int, length_list))
+    T = max(lengths)
 
+    contact_dense = []
+    for pairs, L in zip(contact_pairs_list, lengths):
+        M = pairs2map(pairs, L)
+        if L<T:
+            M = padding(pairs, T)
+        
+        contact_dense.append(torch.from_numpy(M))
+    contact = torch.stack(contact_dense, dim=0).unsqueeze(1).bool()    # [B, 1, T, T]
+
+
+'''
 def diff_collate_fn(batch, alphabet):
     contact, data_fcn_2, data_seq_raw_list, data_length, data_name_list, set_max_len, data_seq_encode_pad = zip(*batch)
     if len(contact) == 1:
@@ -309,7 +303,7 @@ def diff_collate_fn(batch, alphabet):
     tokens = generate_token_batch(alphabet, data_seq_raw)
 
     return contact, data_fcn_2, tokens, data_length, data_name, set_max_len, data_seq_encode_pad
-
+'''
 
 def padding(data_array, maxlen):
     a, b = data_array.shape
@@ -343,7 +337,7 @@ def paired(x, y):
     else:
         return 0
 
-
+# 这个函数就是在构造 Pairing features, 也就是 Unet 的输入的 17 通道的第 17 个通道
 def creatmat(data):
     mat = np.zeros([len(data), len(data)])
     for i in range(len(data)):
@@ -370,3 +364,29 @@ def creatmat(data):
                         break
             mat[[i], [j]] = coefficient
     return mat
+
+def build_17ch_from_L4(data_fcn_2_L4) -> torch.Tensor:
+    """
+    输入：单样本的 one-hot，形状 [L,4]（可为 list/np.ndarray/torch.Tensor）
+    返回：torch.float32，形状 [17, L, L]
+      - 前 16 通道：克罗内科外积（4x4 组合）
+      - 第 17 通道：creatmat(data) 的结果
+    """
+    # 统一为 numpy float32 [L,4]
+    if isinstance(data_fcn_2_L4, torch.Tensor):
+        x = data_fcn_2_L4.detach().cpu().numpy()
+    else:
+        x = np.asarray(data_fcn_2_L4)
+    x = x.astype(np.float32, copy=False)
+    assert x.ndim == 2 and x.shape[1] == 4, f"[L,4] expected, got {x.shape}"
+    L = x.shape[0]
+
+    # 16 通道外积：[4,L] -> [4,4,L,L] -> [16,L,L]
+    xT = torch.from_numpy(x.T.copy())                              # [4,L]
+    pair16 = (xT[:, None, :, None] * xT[None, :, None, :])         # [4,4,L,L]
+    pair16 = pair16.reshape(16, L, L).to(torch.float32)            # [16,L,L]
+
+    # 第 17 通道：creatmat（用你已有的函数）
+    mat17 = torch.from_numpy(creatmat(x).astype(np.float32)).unsqueeze(0)  # [1,L,L]
+
+    return torch.cat([pair16, mat17], dim=0)                       # [17,L,L]

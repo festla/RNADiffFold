@@ -64,7 +64,12 @@ def get_data(args, alphabet):
     else:
         raise NotImplementedError
 
-    partial_collate_fn = partial(diff_collate_fn, alphabet=alphabet)
+    '''
+    partial(diff_collate_fn, alphabet=alphabet) 的作用是：把 diff_collate_fn(batch, alphabet) 这个二参函数，
+    包装成只需要一个参数 batch 的新函数，并把 alphabet 这个实参预先固定住。
+    也就是做了“柯里化 / 预填参数”。等 DataLoader 调用时，它只会传入 batch, alphabet 会用你这里固定好的那个
+    '''
+    partial_collate_fn = partial(diff_collate_fn, alphabet=alphabet)    # 这里的alphabet来自于model.get_alphabet,来自于预训练模型RNA-FM
 
     train_loader = DataLoader(train,
                               batch_size=args.batch_size,
