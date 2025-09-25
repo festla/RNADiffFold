@@ -1,12 +1,18 @@
 # -*- coding: utf-8 -*-
+"""
+@Reviewed by lql: 这个部分执行的是U_condition的构造, 把17通道改为8通道
+
+"""
+
 import torch
+import pdb
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import math
 from itertools import product
 
-CH_FOLD = 1    # 本来是1
+CH_FOLD = 1
 
 
 class Mish(nn.Module):
@@ -104,6 +110,7 @@ class Unet_conditioner(nn.Module):
 
     def forward(self, x):
         # encoding path
+        # print(f"before U_cond: {x.shape}")  before U_cond: torch.Size([4, 17, 384, 384])
         x1 = self.Conv1(x)
 
         x2 = self.Maxpool(x1)
@@ -137,6 +144,7 @@ class Unet_conditioner(nn.Module):
 
         d1 = self.Conv_1x1(d2)
         # d1 = d1.squeeze(1)
-
+        # print(f"after U_cond: {d1.shape}") after U_cond: torch.Size([4, 8, 384, 384])
+        # pdb.set_trace()
         # make output matrix symmetric
         return torch.transpose(d1, -1, -2) * d1

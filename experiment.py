@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
+import pdb
 import numpy as np
 import pandas as pd
-
 from common.utils import add_parent_path
 from common.experiment import add_exp_args as add_exp_args_parent
 from common.experiment import DiffusionExperiment
@@ -11,6 +11,8 @@ from common.loss_utils import bce_loss, evaluate_f1_precision_recall
 from common.loss_utils import calculate_auc, calculate_mattews_correlation_coefficient,rna_evaluation
 add_parent_path(level=2)
 
+from tqdm.auto import tqdm
+import time
 
 def add_exp_args(parser):
     add_exp_args_parent(parser)
@@ -23,7 +25,16 @@ class Experiment(DiffusionExperiment):
         loss_sum = 0.0
         loss_count = 0
         device = self.args.device
-        for _, (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) in enumerate(self.train_loader):
+        pbar = tqdm(self.train_loader,
+            total=len(self.train_loader),           # 需 Dataset.__len__
+            desc=f"Epoch {epoch+1}/{self.args.epochs}",
+            unit="batch",
+            leave=True)
+        """
+        print("model device:", next(self.model.parameters()).device) cuda:1
+        pdb.set_trace()
+        """
+        for _, (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) in enumerate(pbar):    # self.train_loader
             self.optimizer.zero_grad()
             contact = contact.to(device)
             data_fcn_2 = data_fcn_2.to(device)
@@ -32,17 +43,39 @@ class Experiment(DiffusionExperiment):
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
             contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
-            
+            '''print(f"contact.shape: {contact.shape}")
+            print(f"data_fcn_2.shape: {data_fcn_2.shape}")
+            print(f"matrix_rep.shape: {matrix_rep.shape}")
+            print(f"data_length.shape: {data_length.shape}")
+            print(f"data_seq_raw.shape: {data_seq_raw.shape}")
+            print(f"data_seq_encoding.shape: {data_seq_encoding.shape}")
+            print(f"contact_masks.shape: {contact_masks.shape}")
+            pdb.set_trace()
+            contact.shape: torch.Size([4, 1, 384, 384])
+            data_fcn_2.shape: torch.Size([4, 17, 384, 384])
+            matrix_rep.shape: torch.Size([4, 1, 384, 384])
+            data_length.shape: torch.Size([4])
+            data_seq_raw.shape: torch.Size([4, 372])
+            data_seq_encoding.shape: torch.Size([4, 384, 4])
+            contact_masks.shape: torch.Size([4, 1, 384, 384])'''
             loss = self.model(contact, data_fcn_2, data_seq_raw, contact_masks, set_max_len, data_seq_encoding)
             loss.backward()
 
             self.optimizer.step()
             if self.scheduler_iter:
                 self.scheduler_iter.step()
-            loss_sum += loss.detach().cpu().item() * len(contact)
+            bs = len(contact)
+            loss_sum += loss.detach().cpu().item() * bs
+            loss_count += bs
+            bpd = loss_sum / loss_count
+
+            # 在进度条尾部显示指标
+            lr = self.optimizer.param_groups[0]['lr']
+            pbar.set_postfix(bpd=f"{bpd:.5f}", lr=f"{lr:.2e}")
+            '''loss_sum += loss.detach().cpu().item() * len(contact)
             loss_count += len(contact)
             print('Training. Epoch: {}/{}, Bits/dim: {:.5f}'.
-                  format(epoch + 1, self.args.epochs, loss_sum / loss_count), end='\r')
+                  format(epoch + 1, self.args.epochs, loss_sum / loss_count), end='\r')'''
         print('')
         if self.scheduler_epoch: self.scheduler_epoch.step()
         return {'bpd': loss_sum / loss_count}

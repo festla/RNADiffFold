@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 import math
 import torch
+import pdb
 import torch.nn as nn
 import torch.nn.functional as F
 from os.path import join
@@ -29,7 +30,7 @@ def get_model_id(args):
     return 'multinomial_diffusion'
 
 
-class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调用了MultinomialDiffusion（SegmentationUnet2DCondition），这两个分别对应模型的加噪和去噪过程；
+class DiffusionRNA2dPrediction(nn.Module):
     def __init__(self,
                  num_classes,
                  diffusion_dim,
@@ -48,7 +49,8 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
         self.u_ckpt = u_ckpt
 
         # condition
-        self.fm_conditioner, self.alphabet = load_model_and_alphabet_local(join(cond_ckpt_path, 'RNA-FM_pretrained.pth'))
+        self.fm_conditioner, self.alphabet = load_model_and_alphabet_local(
+            join(cond_ckpt_path, 'RNA-FM_pretrained.pth'))
         self.u_conditioner = None
         self.load_u_conditioner()
 
@@ -61,7 +63,7 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
             dropout=self.dp_rate
         )
 
-        self.diffusion = MultinomialDiffusion(  
+        self.diffusion = MultinomialDiffusion(
             self.num_classes,
             self.diffusion_steps,
             self.denoise_layer
@@ -72,7 +74,7 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
         self.u_conditioner.load_state_dict(torch.load(join(cond_ckpt_path, self.u_ckpt), map_location='cpu'))
         condition_out = nn.Conv2d(int(32 * CH_FOLD), self.cond_dim, kernel_size=1, stride=1, padding=0)
         self.u_conditioner.Conv_1x1 = condition_out
-        self.u_conditioner.requires_grad_(True)    # lql chganged to False
+        self.u_conditioner.requires_grad_(True)
 
     def get_alphabet(self):
         return self.alphabet
@@ -87,7 +89,7 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
 
         with torch.no_grad():
             backbone_result = self.fm_conditioner(data_seq_raw, need_head_weights=False, repr_layers=[12],
-                                                  return_contacts=True)    #lql true->false
+                                                  return_contacts=True)
             fm_embedding = backbone_result['representations'][12]
             fm_embedding = fm_embedding[:, 1:-1, :]
 
@@ -115,7 +117,7 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
         return u_condition
 
     def forward(self,
-                x_0,    # 这里的x_0就是数据中的contact字段；但是只是配对列表，没有转为L*L的二维接触矩阵，所以这里应该是有什么问题；
+                x_0,
                 data_fcn_2,
                 data_seq_raw,
                 contact_masks,
@@ -123,11 +125,28 @@ class DiffusionRNA2dPrediction(nn.Module):    # 最核心的模型类：它调�
                 data_seq_encoding
                 ):
 
-        # fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
+        fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
 
         u_condition = self.get_ufold_condition(data_fcn_2)
 
-        loss = self.diffusion(x_0, u_condition, contact_masks, data_seq_encoding)    #  '''fm_condition,''' 
+        '''print(f"x_0.shape: {x_0.shape}")
+        print(f"data_fcn_2.shape: {data_fcn_2.shape}")
+        print(f"data_seq_raw.shape: {data_seq_raw.shape}")
+        print(f"data_seq_encoding.shape: {data_seq_encoding.shape}")
+        print(f"contact_masks.shape: {contact_masks.shape}")
+        print(f"fm_embedding: {fm_condition['fm_embedding'].shape}")
+        print(f"fm_attention_map: {fm_condition['fm_attention_map'].shape}")
+        print(f"u_condition: {u_condition.shape}")
+        pdb.set_trace()
+        x_0.shape: torch.Size([4, 1, 384, 384])
+        data_fcn_2.shape: torch.Size([4, 17, 384, 384])
+        data_seq_raw.shape: torch.Size([4, 372])
+        data_seq_encoding.shape: torch.Size([4, 384, 4])
+        contact_masks.shape: torch.Size([4, 1, 384, 384])
+        fm_embedding: torch.Size([4, 384, 640])
+        fm_attention_map: torch.Size([4, 240, 384, 384])
+        u_condition: torch.Size([4, 8, 384, 384]) 这就是由data_fcn_2的17通道经过Unet得到的'''
+        loss = self.diffusion(x_0, fm_condition, u_condition, contact_masks, data_seq_encoding)
 
         loglik_bpd = -loss.sum()/(math.log(2) * x_0.shape.numel())
         return loglik_bpd

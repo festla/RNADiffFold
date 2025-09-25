@@ -235,17 +235,42 @@ def diff_collate_fn(batch, alphabet):
     """
     contact_pairs_list, fcn2_list_np, seq_list, length_list, name_list = zip(*batch)
     lengths = list(map(int, length_list))
-    T = max(lengths)
+    T = round_up(max(lengths), 16)   # 或者 80 的倍数也行，80 也是 16 的倍数
+    B = len(batch)
 
     contact_dense = []
     for pairs, L in zip(contact_pairs_list, lengths):
         M = pairs2map(pairs, L)
         if L<T:
-            M = padding(pairs, T)
+            M_pad = np.zeros((T, T), dtype=M.dtype)  
+            M_pad[:L, :L] = M
+            M = M_pad
         
         contact_dense.append(torch.from_numpy(M))
-    contact = torch.stack(contact_dense, dim=0).unsqueeze(1).bool()    # [B, 1, T, T]
+    contact = torch.stack(contact_dense, dim=0).unsqueeze(1).long()    # [B, 1, T, T]
 
+    data_fcn_2 = torch.zeros(B, 17, T, T, dtype=torch.float32)
+    for i, (x_L4, L) in enumerate(zip(fcn2_list_np, lengths)):
+        feat17 = build_17ch_from_L4(x_L4)
+        data_fcn_2[i, :, :L, :L] = feat17
+
+    data_seq_raw = list()
+    for item in seq_list:
+        data_seq_raw.append(item)
+    tokens = generate_token_batch(alphabet, data_seq_raw)  # [B, T'(+BOS/EOS)]
+
+    data_seq_encode_pad = torch.zeros(B, T, 4, dtype=torch.float32)
+    for i, seq_str in enumerate(seq_list):
+        enc = seq_encoding(seq_str)                   # numpy [L,4]
+        L = enc.shape[0]
+        data_seq_encode_pad[i, :L, :] = torch.from_numpy(enc.astype(np.float32))    # [B, L, 4]
+
+    data_length = torch.tensor(lengths, dtype=torch.long)
+    data_name = list()
+    for item in name_list:
+        data_name.append(item)
+    set_max_len = T
+    return contact, data_fcn_2, tokens, data_length, data_name, set_max_len, data_seq_encode_pad
 
 '''
 def diff_collate_fn(batch, alphabet):
@@ -390,3 +415,6 @@ def build_17ch_from_L4(data_fcn_2_L4) -> torch.Tensor:
     mat17 = torch.from_numpy(creatmat(x).astype(np.float32)).unsqueeze(0)  # [1,L,L]
 
     return torch.cat([pair16, mat17], dim=0)                       # [17,L,L]
+
+def round_up(x, base=16):
+    return ((x + base - 1) // base) * base

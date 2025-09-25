@@ -23,24 +23,24 @@ def extract(a, t, x_shape):
     return out.reshape(b, *((1,) * (len(x_shape) - 1)))
 
 
-"""def default(val, d):
+def default(val, d):
     if exists(val):
         return val
-    return d() if isfunction(d) else d"""
+    return d() if isfunction(d) else d
 
 
 def log_onehot_to_index(log_x):
-    return log_x.argmax(1)    # argmax(1): 沿着第 1 个维度（类别维度）找到最大值的索引，即获取每个样本的类别。
+    return log_x.argmax(1)
 
 
 def index_to_log_onehot(x, K):
     assert x.max().item() < K, f'Error: {x.max().item()} >= {K}'
 
-    x_onehot = F.one_hot(x, K)                    
+    x_onehot = F.one_hot(x, K)
 
     permute_order = (0, -1) + tuple(range(1, len(x.size())))
 
-    x_onehot = x_onehot.permute(permute_order)    # 类似于(B,L,L,K)-->(B,K,L,L)
+    x_onehot = x_onehot.permute(permute_order)
 
     log_x = torch.log(x_onehot.float().clamp(min=1e-30))
 
@@ -50,9 +50,6 @@ def index_to_log_onehot(x, K):
 def sum_except_batch(x, num_dims=1):
     '''
     Sums all dimensions except the first.
-
-    功能：对除前 num_dims 个 batch 维以外的维度求和。默认只保留第 0 维（batch）。
-    例如：若 x shape (B, K, L, L)，sum_except_batch(x) -> shape (B,)，即将 K*L*L 合并求和。
 
     Args:
         x: Tensor, shape (batch_size, ...)
@@ -80,7 +77,7 @@ def beta_schedule(num_steps, schedule_name='cosine', s=0.01):
     as proposed in https://openreview.net/forum?id=-NEXDKk8gZ
     """
     # t = np.linspace(0, num_steps, steps)
-    t = torch.arange(0, num_steps + 1, dtype=torch.float64)    # 生成一个长度为nums_step+1的张量：[0，1，2，3，4....nums_step]
+    t = torch.arange(0, num_steps + 1, dtype=torch.float64)
     if schedule_name == 'cosine':
         # f_t = np.cos(((t / num_steps) + s) / (1 + s) * np.pi * 0.5) ** 2
         f_t = torch.cos(((t / num_steps) + s) / (1 + s) * np.pi * 0.5) ** 2
@@ -108,28 +105,23 @@ class MultinomialDiffusion(nn.Module):
             denoise_fn,
     ):
         super(MultinomialDiffusion, self).__init__()
-        self.K = num_classes    # Here default is 2
+        self.K = num_classes
         self.time_steps = time_steps
         self._denoise_fn = denoise_fn
         # self.fm_conditioner = fm_conditioner
         # self.u_conditioner = u_conditioner
 
-        alphas = beta_schedule(time_steps, schedule_name='cosine', s=0.01)            # 加噪过程中的保真系数
-        log_alphas = torch.log(alphas)                                                # 一步噪声的方差
-        log_alpha_bars = torch.cumsum(log_alphas, dim=0)                              # 前缀累乘，累积保真度，加噪过程可一步完成
-        log_1_minus_alphas = torch.log(1 - torch.exp(log_alphas) + 1e-40)             # 一步噪声的方差
-        log_1_minus_alpha_bars = torch.log(1 - torch.exp(log_alpha_bars) + 1e-40)     # 累计噪声方差
+        alphas = beta_schedule(time_steps, schedule_name='cosine', s=0.01)
+        log_alphas = torch.log(alphas)
+        log_alpha_bars = torch.cumsum(log_alphas, dim=0)
+        log_1_minus_alphas = torch.log(1 - torch.exp(log_alphas) + 1e-40)
+        log_1_minus_alpha_bars = torch.log(1 - torch.exp(log_alpha_bars) + 1e-40)
 
         assert log_add_exp(log_alphas, log_1_minus_alphas).abs().sum().item() < 1e-5
         assert log_add_exp(log_alpha_bars, log_1_minus_alpha_bars).abs().sum().item() < 1e-5
-        assert (torch.cumsum(log_alphas, dim=0) - log_alpha_bars).abs().sum().item() < 1e-5    # 用来确认前面算出来的对数量彼此一致、没有数值/逻辑错误
+        assert (torch.cumsum(log_alphas, dim=0) - log_alpha_bars).abs().sum().item() < 1e-5
 
         # Convert to float32 and register buffers.
-        """
-        @Lql 9_22 Learning:
-            register_buffer 用来放“需要跟着模型跑，但不参与训练”的张量。
-            在扩散模型里，它非常适合存放像 log_alpha_bars 这类固定时间表与运行统计。
-        """
         self.register_buffer('log_alphas', log_alphas.float())
         self.register_buffer('log_alpha_bars', log_alpha_bars.float())
         self.register_buffer('log_1_minus_alphas', log_1_minus_alphas.float())
@@ -139,18 +131,13 @@ class MultinomialDiffusion(nn.Module):
         self.register_buffer('Lt_count', torch.zeros(self.time_steps))
 
     # KL divergence
-    """
-    @Lql 9_22 Learning:
-        KL 散度(Kullback-Leibler divergence)是衡量两个概率分布差异的一个重要指标;
-        用 p2 分布来拟合 p1 分布的好坏,p1是真实分布。
-    """
     def multinomial_kl(self, log_prob1, log_prob2):
         kl = (log_prob1.exp() * (log_prob1 - log_prob2)).sum(dim=1)
         return kl
 
     # p(x)--> x
     def log_sample_categorical(self, logits):
-        uniform = torch.rand_like(logits)                              # 形状和logits一样，服从均匀分布[)
+        uniform = torch.rand_like(logits)
         gumbel_noise = -torch.log(-torch.log(uniform + 1e-30) + 1e-30)
         sample = (gumbel_noise + logits).argmax(dim=1)
         log_sample = index_to_log_onehot(sample, self.K)
@@ -194,11 +181,11 @@ class MultinomialDiffusion(nn.Module):
         return log_EV_xtmin_given_xt_given_xstart
 
     # x_0_hat
-    def predict_x_0(self, log_x_t, t, u_condition, seq_encoding):    # fm_condition, 
+    def predict_x_0(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
         # convert xt to index
         x_t = log_onehot_to_index(log_x_t)
 
-        out = self._denoise_fn(t, x_t, u_condition, seq_encoding)    # fm_condition, 
+        out = self._denoise_fn(t, x_t, fm_condition, u_condition, seq_encoding)
 
         assert out.size(0) == x_t.size(0)
         assert out.size(1) == self.K
@@ -209,7 +196,7 @@ class MultinomialDiffusion(nn.Module):
         return log_pred
 
     # p(xt-1|xt)
-    def p_pred(self, log_x_t, t, u_condition, seq_encoding):    # fm_condition,
+    def p_pred(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
         log_x_0_hat = self.predict_x_0(log_x_t, t, fm_condition, u_condition, seq_encoding)
         log_probs = self.q_posterior(log_x_t, log_x_0_hat, t)
         return log_probs
@@ -239,13 +226,13 @@ class MultinomialDiffusion(nn.Module):
         return sum_except_batch(kl_prior)
 
     # compute L_{t-1} and L_0
-    def compute_Lt(self, log_x_0, log_x_t,  u_condition, seq_encoding, t, contact_masks, detach_mean=False):    # fm_condition,
+    def compute_Lt(self, log_x_0, log_x_t, fm_condition, u_condition, seq_encoding, t, contact_masks, detach_mean=False):
         log_true_prob = self.q_posterior(log_x_t=log_x_t, log_x_0=log_x_0, t=t)
 
         log_model_prob = self.p_pred(
             log_x_t=log_x_t,
             t=t,
-            # fm_condition=fm_condition,
+            fm_condition=fm_condition,
             u_condition=u_condition * contact_masks,
             seq_encoding=seq_encoding
         )
@@ -291,16 +278,16 @@ class MultinomialDiffusion(nn.Module):
             raise ValueError('Unknown method: {}'.format(method))
 
 
-    def forward(self, x_0, u_condition, contact_masks, seq_encoding):    # fm_condition, 
+    def forward(self, x_0, fm_condition, u_condition, contact_masks, seq_encoding):
         batch, device = x_0.size(0), x_0.device
 
         t, pt = self.sample_time(batch, device, 'importance')
-        log_x_0 = index_to_log_onehot(x_0, self.K)
+        log_x_0 = index_to_log_onehot(x_0, self.K)    # 把离散标签 x_0 变成 log-onehot
 
         kl = self.compute_Lt(
             log_x_0=log_x_0,
-            log_x_t=self.q_sample(log_x_0, t),
-            # fm_condition=fm_condition,
+            log_x_t=self.q_sample(log_x_0, t),    # 对 log_x_0 加噪得到 log_x_t
+            fm_condition=fm_condition,
             u_condition=u_condition,
             seq_encoding=seq_encoding,
             t=t,

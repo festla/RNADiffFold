@@ -148,7 +148,7 @@ class Block(nn.Module):
             self,
             dim,
             dim_out,
-            groups=8,    # lql changed from 8 to 4 ,to satisfy diffusion_dim 8->4
+            groups=8,
     ):
         super().__init__()
         self.block = nn.Sequential(
@@ -351,12 +351,11 @@ class SegmentationUnet2DCondition(nn.Module):
             seq_encoding
     ):
         x_shape = x.shape[1:]
-        if len(x.size()) == 3:    # x是三维的时候在dim=1补一维
-            x = x.unsqueeze(1)    # x.shape = (B, C, H, W)
+        if len(x.size()) == 3:
+            x = x.unsqueeze(1)
 
         B, C, H, W = x.size()
-        # print((B, C, H, W))
-        # import pdb;pdb.set_trace()
+
         x = self.embedding(x)
         assert x.shape == (B, C, H, W, self.dim)
         x = x.permute(0, 1, 4, 2, 3)
@@ -427,17 +426,9 @@ if __name__ == '__main__':
     t_emb = torch.randint(0, 1000, [2])
     u_cond = torch.randn([2, 8, 160, 160])
     fm_cond = torch.randn([2, 160, 640])
-
-    seq_encoding = torch.randn([2, 160, 4])
-    print({
-        "x": getattr(x, "shape", None),
-        "t_emb": getattr(t_emb, "shape", None),
-        "u_cond": getattr(u_cond, "shape", None),
-        "fm_cond": getattr(fm_cond, "shape", None),
-        "seq_encoding": getattr(seq_encoding, "shape", None),
-        })
+    print(len(fm_cond))
     model = SegmentationUnet2DCondition(2, 8, 8, 1000, learned_time_emb=True, cat_cond=True)
-    out = model(t_emb, x, fm_cond, u_cond, seq_encoding)
-    print(out)
+    # out = model(x, t_emb, cond)
+    # print(out)
     flops, params = profile(model, inputs=(t_emb, x, fm_cond, u_cond))
     print(flops, params)
