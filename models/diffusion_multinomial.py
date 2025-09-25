@@ -181,11 +181,11 @@ class MultinomialDiffusion(nn.Module):
         return log_EV_xtmin_given_xt_given_xstart
 
     # x_0_hat
-    def predict_x_0(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
+    def predict_x_0(self, log_x_t, t, fm_condition, seq_encoding): # u_condition, 
         # convert xt to index
         x_t = log_onehot_to_index(log_x_t)
 
-        out = self._denoise_fn(t, x_t, fm_condition, u_condition, seq_encoding)
+        out = self._denoise_fn(t, x_t, fm_condition, seq_encoding) # u_condition, 
 
         assert out.size(0) == x_t.size(0)
         assert out.size(1) == self.K
@@ -196,8 +196,8 @@ class MultinomialDiffusion(nn.Module):
         return log_pred
 
     # p(xt-1|xt)
-    def p_pred(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
-        log_x_0_hat = self.predict_x_0(log_x_t, t, fm_condition, u_condition, seq_encoding)
+    def p_pred(self, log_x_t, t, fm_condition, seq_encoding): # u_condition,
+        log_x_0_hat = self.predict_x_0(log_x_t, t, fm_condition, seq_encoding) # u_condition, 
         log_probs = self.q_posterior(log_x_t, log_x_0_hat, t)
         return log_probs
 
@@ -226,14 +226,14 @@ class MultinomialDiffusion(nn.Module):
         return sum_except_batch(kl_prior)
 
     # compute L_{t-1} and L_0
-    def compute_Lt(self, log_x_0, log_x_t, fm_condition, u_condition, seq_encoding, t, contact_masks, detach_mean=False):
+    def compute_Lt(self, log_x_0, log_x_t, fm_condition, seq_encoding, t, contact_masks, detach_mean=False): # u_condition,
         log_true_prob = self.q_posterior(log_x_t=log_x_t, log_x_0=log_x_0, t=t)
 
         log_model_prob = self.p_pred(
             log_x_t=log_x_t,
             t=t,
             fm_condition=fm_condition,
-            u_condition=u_condition * contact_masks,
+            # u_condition=u_condition * contact_masks,
             seq_encoding=seq_encoding
         )
 
@@ -278,7 +278,7 @@ class MultinomialDiffusion(nn.Module):
             raise ValueError('Unknown method: {}'.format(method))
 
 
-    def forward(self, x_0, fm_condition, u_condition, contact_masks, seq_encoding):
+    def forward(self, x_0, fm_condition, contact_masks, seq_encoding): #  u_condition,
         batch, device = x_0.size(0), x_0.device
 
         t, pt = self.sample_time(batch, device, 'importance')
@@ -288,7 +288,7 @@ class MultinomialDiffusion(nn.Module):
             log_x_0=log_x_0,
             log_x_t=self.q_sample(log_x_0, t),    # 对 log_x_0 加噪得到 log_x_t
             fm_condition=fm_condition,
-            u_condition=u_condition,
+            # u_condition=u_condition,
             seq_encoding=seq_encoding,
             t=t,
             contact_masks=contact_masks

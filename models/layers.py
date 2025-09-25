@@ -236,7 +236,7 @@ class SegmentationUnet2DCondition(nn.Module):
     def __init__(
             self,
             num_classes,
-            dim,
+            dim, 
             cond_dim,
             num_steps,
             dim_mults=(1, 2, 4, 8),
@@ -251,7 +251,7 @@ class SegmentationUnet2DCondition(nn.Module):
 
         self.embedding = nn.Embedding(num_classes, dim)
 
-        self.dim = dim
+        self.dim = dim    # diffusion_dim = 8
         self.cond_dim = cond_dim
         self.num_classes = num_classes
         self.cat_cond = cat_cond
@@ -304,7 +304,7 @@ class SegmentationUnet2DCondition(nn.Module):
         )
 
         self.x_mlp = nn.Sequential(
-            nn.Linear(40, 64),
+            nn.Linear(32, 64),
             Mish(),
             nn.Linear(64, self.dim)
         )
@@ -348,27 +348,27 @@ class SegmentationUnet2DCondition(nn.Module):
             time,
             x,
             fm_condition,
-            u_condition,
+            # u_condition,
             seq_encoding
     ):
-        x_shape = x.shape[1:]
+        x_shape = x.shape[1:]    # [B, 1, L, L]-->[1, L, L] x没变
         if len(x.size()) == 3:
             x = x.unsqueeze(1)
 
-        B, C, H, W = x.size()
+        B, C, H, W = x.size()   # C=1, H=W=T
 
-        x = self.embedding(x)
-        assert x.shape == (B, C, H, W, self.dim)
-        x = x.permute(0, 1, 4, 2, 3)
+        x = self.embedding(x)   # nn.Embedding(num_classes, dim) x.shape = [B, C, H, W, dim]
+        assert x.shape == (B, C, H, W, self.dim)     
+        x = x.permute(0, 1, 4, 2, 3)                           # x.shape = [B, C, dim, H, W]
         assert x.shape == (B, C, self.dim, H, W)
 
-        x = x.reshape(B, C * self.dim, H, W)
+        x = x.reshape(B, C * self.dim, H, W)                   # x.shape = [B, C*dim, H, W] 
 
         cond = None
 
-        fm_embedding = self.fm_cond_1(fm_condition['fm_embedding']).permute(0, 2, 1)
+        fm_embedding = self.fm_cond_1(fm_condition['fm_embedding']).permute(0, 2, 1)    # [B, T, 640]->[B, L, 8]->[B, 8, T]
         # fm_attention_map = self.fm_cond_2(fm_condition['fm_attention_map'].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
-        cond_L = fm_embedding.size(-1)
+        cond_L = fm_embedding.size(-1)    # cond_L = T
 
         fm_out_cat = torch.cat([fm_embedding.unsqueeze(-1).repeat(1, 1, 1, cond_L),
                                 fm_embedding.unsqueeze(-2).repeat(1, 1, cond_L, 1)], dim=1)
@@ -384,7 +384,8 @@ class SegmentationUnet2DCondition(nn.Module):
                                   fm_out_cat,
                                   # fm_attention_map,
                                   seq_out_cat,
-                                  u_condition], dim=1).permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+                                  # u_condition,
+                                  ], dim=1).permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
         t = self.to_time_cond(time)
 

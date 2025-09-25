@@ -127,7 +127,7 @@ class DiffusionRNA2dPrediction(nn.Module):
 
         fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
 
-        u_condition = self.get_ufold_condition(data_fcn_2)
+        # u_condition = self.get_ufold_condition(data_fcn_2)
 
         '''print(f"x_0.shape: {x_0.shape}")
         print(f"data_fcn_2.shape: {data_fcn_2.shape}")
@@ -146,7 +146,7 @@ class DiffusionRNA2dPrediction(nn.Module):
         fm_embedding: torch.Size([4, 384, 640])
         fm_attention_map: torch.Size([4, 240, 384, 384])
         u_condition: torch.Size([4, 8, 384, 384]) 这就是由data_fcn_2的17通道经过Unet得到的'''
-        loss = self.diffusion(x_0, fm_condition, u_condition, contact_masks, data_seq_encoding)
+        loss = self.diffusion(x_0, fm_condition, contact_masks, data_seq_encoding)    #  u_condition, 
 
         loglik_bpd = -loss.sum()/(math.log(2) * x_0.shape.numel())
         return loglik_bpd

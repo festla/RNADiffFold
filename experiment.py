@@ -43,10 +43,19 @@ class Experiment(DiffusionExperiment):
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
             contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
-            '''print(f"contact.shape: {contact.shape}")
+            '''
+            print(f"contact.shape: {contact.shape}")
             print(f"data_fcn_2.shape: {data_fcn_2.shape}")
             print(f"matrix_rep.shape: {matrix_rep.shape}")
-            print(f"data_length.shape: {data_length.shape}")
+            '''
+            """print(f"contact.shape: {contact.shape}")
+            print(f"data_length[0]: {data_length[0]}")
+            print(f"data_length[1]: {data_length[1]}")
+            print(f"data_length[2]: {data_length[2]}")
+            print(f"data_length[3]: {data_length[3]}")
+            print(f"set_max_len: {set_max_len}")
+            pdb.set_trace()"""
+            '''
             print(f"data_seq_raw.shape: {data_seq_raw.shape}")
             print(f"data_seq_encoding.shape: {data_seq_encoding.shape}")
             print(f"contact_masks.shape: {contact_masks.shape}")
