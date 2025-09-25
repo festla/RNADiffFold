@@ -106,7 +106,7 @@ class DiffusionRNA2dPrediction(nn.Module):
             fm_attention_map = F.pad(fm_attention_map, padding_size, 'constant', value=padding_value)
 
             fm_condition['fm_embedding'] = fm_embedding
-            fm_condition['fm_attention_map'] = fm_attention_map
+            # fm_condition['fm_attention_map'] = fm_attention_map
 
         return fm_condition
 

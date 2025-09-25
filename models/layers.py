@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import math
 import torch
+import pdb
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import einsum
@@ -303,7 +304,7 @@ class SegmentationUnet2DCondition(nn.Module):
         )
 
         self.x_mlp = nn.Sequential(
-            nn.Linear(48, 64),
+            nn.Linear(40, 64),
             Mish(),
             nn.Linear(64, self.dim)
         )
@@ -366,7 +367,7 @@ class SegmentationUnet2DCondition(nn.Module):
         cond = None
 
         fm_embedding = self.fm_cond_1(fm_condition['fm_embedding']).permute(0, 2, 1)
-        fm_attention_map = self.fm_cond_2(fm_condition['fm_attention_map'].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+        # fm_attention_map = self.fm_cond_2(fm_condition['fm_attention_map'].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
         cond_L = fm_embedding.size(-1)
 
         fm_out_cat = torch.cat([fm_embedding.unsqueeze(-1).repeat(1, 1, 1, cond_L),
@@ -374,10 +375,14 @@ class SegmentationUnet2DCondition(nn.Module):
         seq_encoding = seq_encoding.permute(0, 2, 1)
         seq_out_cat = torch.cat([seq_encoding.unsqueeze(-1).repeat(1, 1, 1, cond_L),
                                  seq_encoding.unsqueeze(-2).repeat(1, 1, cond_L, 1)], dim=1)
-
+        """print(f"x.shape: {x.shape}")
+        print(f"fm_out_cat.shape: {fm_out_cat.shape}")
+        print(f"seq_out_cat.shape: {seq_out_cat.shape}")
+        print(f"u_condition.shape: {u_condition.shape}")
+        pdb.set_trace()"""
         x = self.x_mlp(torch.cat([x,
                                   fm_out_cat,
-                                  fm_attention_map,
+                                  # fm_attention_map,
                                   seq_out_cat,
                                   u_condition], dim=1).permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
