@@ -1,0 +1,21 @@
+{
+  "project_name": "prediction",
+  "save_root_path": "./common/prediction",
+  "model_ckpt_path": "./logs/bpRNA_160_multinomial_diffusion_adam/2025-11-05_10-58-38/check/best_checkpoint_140.pt",
+
+  "device": 0,
+  "seed": 2023,
+  "num_samples": 10,
+  "predict_data": "predict.fasta",
+
+
+  "model":
+  {
+    "diffusion_steps": 20,
+    "num_classes": 2,
+    "diffusion_dim": 8,
+    "cond_dim": 8,
+    "dp_rate": 0.1,
+    "u_conditioner_ckpt": "ufold_train_alldata.pt"
+  }
+}
