@@ -356,6 +356,7 @@ class DiffusionExperiment(BaseExperiment):
                  train_loader, val_loader, test_loader,
                  model, optimizer, scheduler_iter, scheduler_epoch):
 
+        # 这里指定了日志的根目录
         if args.log_home is None:
             self.log_base = join(HOME, 'lql', 'RNADiffFold', 'logs')
         else:
@@ -378,8 +379,8 @@ class DiffusionExperiment(BaseExperiment):
                                                   optimizer=optimizer,
                                                   scheduler_iter=scheduler_iter,
                                                   scheduler_epoch=scheduler_epoch,
-                                                  log_path=join(self.log_base, f'{data_id}_{model_id}_{optim_id}',
-                                                                args.name),
+                                                  log_path=join(self.log_base, f'{data_id}_{model_id}_{optim_id}',    # 相同数据实验的日志名称
+                                                                args.name),    # name 这里指的是时间戳
                                                   eval_every=args.eval_every,
                                                   check_every=args.check_every,
                                                   save_name=save_name)

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from torch.utils.data import DataLoader
-from .data_generator import Dataset, diff_collate_fn
+from .data_generator import Dataset, diff_collate_fn, RNA_Augmentation
 from os.path import join
 from functools import partial
 
@@ -20,6 +20,13 @@ def add_data_args(parser):
     parser.add_argument('--eval_batch_size', type=int, default=1)
     parser.add_argument('--num_workers', type=int, default=64)
     parser.add_argument('--pin_memory', type=eval, default=False)
+
+    # === 新增：数据增强 & label smoothing 的可选参数 ===
+    parser.add_argument('--use_aug', type=eval, default=False, help='whether to use RNA covariation augmentation')
+    parser.add_argument('--aug_select', type=float, default=0.5, help='probability of selecting a sample for aug')
+    parser.add_argument('--aug_replace', type=float, default=0.2, help='probability of mutating one base pair')
+    parser.add_argument('--aug_mode', type=str, default='cov', choices=['cov', 'cg'], help='augmentation mode')
+    parser.add_argument('--smooth', type=float, default=0.0, help='label smoothing strength for contact map (0 = off)')
 
 
 def get_data_id(args):
@@ -71,14 +78,42 @@ def get_data(args, alphabet):
     包装成只需要一个参数 batch 的新函数，并把 alphabet 这个实参预先固定住。
     也就是做了“柯里化 / 预填参数”。等 DataLoader 调用时，它只会传入 batch, alphabet 会用你这里固定好的那个
     '''
-    partial_collate_fn = partial(diff_collate_fn, alphabet=alphabet)    # 这里的alphabet来自于model.get_alphabet,来自于预训练模型RNA-FM
+    # ====== 关键新逻辑：构造增强器 & smoothing 参数 ======
+    # label smoothing：<=0 当成不用
+    smooth = None if (not hasattr(args, 'smooth') or args.smooth <= 0.0) else args.smooth
+
+    # 训练阶段的数据增强（只对 train_loader 生效）
+    if hasattr(args, 'use_aug') and bool(args.use_aug):
+        train_aug = RNA_Augmentation(
+            select=getattr(args, 'aug_select', 0.5),
+            replace=getattr(args, 'aug_replace', 0.2),
+            seed=42,
+            mode=getattr(args, 'aug_mode', 'cov')
+        )
+    else:
+        train_aug = None
+
+    # === collate_fn 定义 ===
+    # 训练用：可以带 aug / smooth
+    train_collate_fn = partial(
+        diff_collate_fn,
+        alphabet=alphabet,
+        aug=train_aug,
+        smooth=smooth
+    )
+
+    # 验证 / 测试：默认不增强、不 smoothing（跟以前完全一致）
+    eval_collate_fn = partial(
+        diff_collate_fn,
+        alphabet=alphabet
+    )
 
     train_loader = DataLoader(train,
                               batch_size=args.batch_size,
                               shuffle=True,
                               num_workers=args.num_workers,
                               persistent_workers=True,
-                              collate_fn=partial_collate_fn,
+                              collate_fn=train_collate_fn,
                               pin_memory=args.pin_memory,
                               drop_last=True)
 
@@ -87,7 +122,7 @@ def get_data(args, alphabet):
                             shuffle=False,
                             num_workers=args.num_workers,
                             persistent_workers=True,
-                            collate_fn=partial_collate_fn,
+                            collate_fn=eval_collate_fn,
                             pin_memory=args.pin_memory,
                             drop_last=False)
 
@@ -96,7 +131,7 @@ def get_data(args, alphabet):
                              shuffle=False,
                              num_workers=args.num_workers,
                              persistent_workers=True,
-                             collate_fn=partial_collate_fn,
+                             collate_fn=eval_collate_fn,
                              pin_memory=args.pin_memory,
                              drop_last=False)
 

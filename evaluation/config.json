@@ -1,7 +1,7 @@
 {
   "project_name": "evaluation",
   "save_root_path": "./evaluation",
-  "model_ckpt_path": "./logs/bpRNA_160_multinomial_diffusion_adam/2025-11-05_10-58-38/check/best_checkpoint_140.pt",
+  "model_ckpt_path": "./logs/RNAStrAlign_160_multinomial_diffusion_adam/2025-11-21_09-50-00/check/best_checkpoint_65.pt",
   "seed": 1,
   "device": "cuda:1",
   "num_samples": 10,
@@ -10,8 +10,8 @@
 
   "data":
   {
-    "dataset": "TS_hard",
-    "batch_size": 1,
+    "dataset": "RNAStrAlign",
+    "batch_size": 2,
     "num_workers": 64,
     "pin_memory": false
   },

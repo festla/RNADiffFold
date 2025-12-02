@@ -36,7 +36,13 @@ def evaluation(args, eval_model, dataloader):
 
         for _, batch in enumerate(pbar):
             
-            (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding) = batch
+            try:
+                # 尝试解包 batch
+                (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding) = batch
+            except TypeError as e:
+                # 如果解包失败，跳过当前 batch
+                print(f"Skipping batch due to error: {e}")
+                continue  # 跳过这次循环，继续处理下一个 batch
             total_name_list += [item for item in data_name]
             total_length_list += [item.item() for item in data_length]
 

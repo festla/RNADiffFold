@@ -9,11 +9,151 @@ from torch.utils import data
 from itertools import product
 from typing import List, Tuple
 from common.data_utils import *
+import numpy as np
+import torch
+import math
+from scipy.ndimage import convolve
+import random
 
 
 perm = list(product(np.arange(4), np.arange(4)))
 perm2 = [[1, 3], [3, 1]]
 perm_nc = [[0, 0], [0, 2], [0, 3], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2], [3, 0], [3, 3]]
+
+#  Cov-based data augmentation from PriFold
+class Augmentation:
+    def __init__(self, select, replace, seed=42, mode='cov'):
+        """
+        select:   样本被选中做增强的概率（0~1）
+        replace:  对每一对碱基对是否做“共变突变”的概率（0~1）
+        seed:     随机种子
+        mode:     'cov' 使用你原来的共变逻辑；'cg' 只替换成 CG 对
+        """
+        self.select = select
+        self.replace = replace
+        self.seed = seed
+        self.mode = mode
+        random.seed(self.seed)
+
+    def __call__(self, seq, ct):
+        """
+        seq: 原始序列字符串（这里默认是 DNA：A/C/G/T）
+        ct:  contact map，numpy [L,L]，0/1
+        """
+        if random.random() > self.select:
+            return seq
+
+        upper_triangle_indices = np.triu_indices_from(ct, k=1)
+        all_pairs = np.column_stack(upper_triangle_indices)
+        pairs = all_pairs[ct[upper_triangle_indices] == 1]
+
+        seq_original = seq
+
+        if self.mode == 'cov':
+            for x, y in pairs:
+                if random.random() < self.replace: 
+                    # AT / TA
+                    if ((seq_original[x] == 'A') and (seq_original[y] == 'T')) or \
+                       ((seq_original[x] == 'T') and (seq_original[y] == 'A')):
+
+                        # Wobble: GT
+                        if random.random() < 7.24 / (7.24 + 46.3):
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'T' + seq[x+1:]
+                                seq = seq[:y] + 'G' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'G' + seq[x+1:]
+                                seq = seq[:y] + 'T' + seq[y+1:]
+                        else:  # GC
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'G' + seq[x+1:]
+                                seq = seq[:y] + 'C' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'C' + seq[x+1:]
+                                seq = seq[:y] + 'G' + seq[y+1:]
+
+                    # CG / GC
+                    elif ((seq_original[x] == 'C') and (seq_original[y] == 'G')) or \
+                         ((seq_original[x] == 'G') and (seq_original[y] == 'C')):
+
+                        # Wobble: GT
+                        if random.random() < 7.24 / (7.24 + 25.77):
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'G' + seq[x+1:]
+                                seq = seq[:y] + 'T' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'T' + seq[x+1:]
+                                seq = seq[:y] + 'G' + seq[y+1:]
+                        else:  # AU (这里是 DNA 版本：AT)
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'A' + seq[x+1:]
+                                seq = seq[:y] + 'T' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'T' + seq[x+1:]
+                                seq = seq[:y] + 'A' + seq[y+1:]
+
+                    # GT / TG (wobble 对)
+                    elif ((seq_original[x] == 'G') and (seq_original[y] == 'T')) or \
+                         ((seq_original[x] == 'T') and (seq_original[y] == 'G')):
+
+                        # 变成 AU (AT)
+                        if random.random() < 25.77 / (25.77 + 46.3):
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'A' + seq[x+1:]
+                                seq = seq[:y] + 'T' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'T' + seq[x+1:]
+                                seq = seq[:y] + 'A' + seq[y+1:]
+                        else:  # 变成 GC
+                            if random.random() < 0.5:
+                                seq = seq[:x] + 'G' + seq[x+1:]
+                                seq = seq[:y] + 'C' + seq[y+1:]
+                            else:
+                                seq = seq[:x] + 'C' + seq[x+1:]
+                                seq = seq[:y] + 'G' + seq[y+1:]
+
+        elif self.mode == 'cg':
+            for x, y in pairs:
+                if random.random() < self.replace:
+                    if random.random() < 0.5:
+                        seq = seq[:x] + 'C' + seq[x+1:]
+                        seq = seq[:y] + 'G' + seq[y+1:]
+                    else:
+                        seq = seq[:x] + 'G' + seq[x+1:]
+                        seq = seq[:y] + 'C' + seq[y+1:]
+
+        return seq
+
+# Change T(DNA) to U(RNA)
+class RNA_Augmentation(Augmentation):
+    """
+    对外仍然用 RNA 序列（含 U），内部通过 U<->T 复用 DNA 逻辑。
+    """
+    def __call__(self, seq, ct):
+        # 外部传进来的是 RNA：A/C/G/U
+        seq_dna = seq.replace('U', 'T')
+        seq_dna_aug = super().__call__(seq_dna, ct)
+        return seq_dna_aug.replace('T', 'U')
+
+# label smoothing from PriFold
+def label_smoothing_np(contact_map, smooth):
+    """
+    contact_map: numpy [L, L]，0/1
+    smooth: 比如 0.1
+    """
+    kernel = np.array([
+        [smooth, smooth, smooth],
+        [smooth, 0.0,   smooth],
+        [smooth, smooth, smooth]
+    ], dtype=np.float32)
+
+    smoothed_map = convolve(contact_map.astype(float),
+                            kernel,
+                            mode='constant',
+                            cval=0.0)
+    smoothed_map = np.clip(smoothed_map, 0.0, smooth)
+    smoothed_map[contact_map == 1] = 1.0
+    return smoothed_map
 
 
 def make_dataset(
@@ -262,7 +402,7 @@ def generate_token_batch(alphabet, seq_strs):
             tokens[i, len(seq_str) + int(alphabet.prepend_bos)] = alphabet.eos_idx
     return tokens
 
-def diff_collate_fn(batch, alphabet):
+def diff_collate_fn(batch, alphabet, aug=None, smooth=None):
     """
     batch: List[tuple]，每个元素对应 __getitem__ 的返回：
            (contact_pairs, data_fcn_2_onehot[L,4], seq_raw_str, length_int, name)
@@ -280,37 +420,63 @@ def diff_collate_fn(batch, alphabet):
     T = round_up(max(lengths), 16)   # 或者 80 的倍数也行，80 也是 16 的倍数
     B = len(batch)
 
+    # data augmentation
+    seq_used_list = []
+    for pairs, L, seq in zip(contact_pairs_list, lengths, seq_list):
+        if aug is not None:
+            ct = np.zeros((L, L), dtype=np.int8)
+            for i, j in pairs:
+                if 0 <= i < L and 0 <= j < L:
+                    ct[i, j] = 1
+                    ct[j, i] = 1
+            seq_aug = aug(seq, ct)
+            seq_used_list.append(seq_aug)
+        else:
+            seq_used_list.append(seq)
 
     contact_dense = []
-    for pairs, L, seq in zip(contact_pairs_list, lengths, seq_list):
-        M = pairs2map(pairs, L, seq)
+    for pairs, L, seq_used in zip(contact_pairs_list, lengths, seq_used_list):
+        M = pairs2map(pairs, L, seq_used)
         if M is None:
             return None
         if L<T:
             M_pad = np.zeros((T, T), dtype=M.dtype)  
             M_pad[:L, :L] = M
             M = M_pad
-        
+        if smooth is not None:
+            M = label_smoothing_np(M, smooth)
+
         contact_dense.append(torch.from_numpy(M))
-    contact = torch.stack(contact_dense, dim=0).unsqueeze(1).long()    # [B, 1, T, T]
+
+    contact = torch.stack(contact_dense, dim=0).unsqueeze(1)    # [B, 1, T, T]
     # print(f"contact.shape: {contact.shape}")
+    if smooth is None:
+        contact = contact.long()
+    else:
+        contact = contact.float()    # smoothing 之后用float
 
     data_fcn_2 = torch.zeros(B, 17, T, T, dtype=torch.float32)
-    for i, (x_L4, L) in enumerate(zip(fcn2_list_np, lengths)):
-        feat17 = build_17ch_from_L4(x_L4)
+    for i, (x_L4_orig, seq_used, L) in enumerate(zip(fcn2_list_np, seq_used_list, lengths)):
+        if aug is None:
+            base_L4 = x_L4_orig
+        else:
+            base_L4 = seq_encoding(seq_used)
+        
+        feat17 = build_17ch_from_L4(base_L4)
         data_fcn_2[i, :, :L, :L] = feat17
     # print(f"data_fcn_2.shape: {data_fcn_2.shape}")
-    data_seq_raw = list()
+
+    tokens = generate_token_batch(alphabet, seq_used_list)
+    """data_seq_raw = list()
     for item in seq_list:
         data_seq_raw.append(item)
-    tokens = generate_token_batch(alphabet, data_seq_raw)  # [B, T'(+BOS/EOS)]
+    tokens = generate_token_batch(alphabet, data_seq_raw)  # [B, T'(+BOS/EOS)]"""
 
     # print(f"tokens.shape: {tokens.shape}")
 
     data_seq_encode_pad = torch.zeros(B, T, 4, dtype=torch.float32)
-    for i, seq_str in enumerate(seq_list):
-        enc = seq_encoding(seq_str)                   # numpy [L,4]
-        L = enc.shape[0]
+    for i, (seq_used, L) in enumerate(zip(seq_used_list, lengths)):
+        enc = seq_encoding(seq_used)                   # numpy [L,4]
         data_seq_encode_pad[i, :L, :] = torch.from_numpy(enc.astype(np.float32))    # [B, L, 4]
     # print(f"data_seq_encode_pad.shape: {data_seq_encode_pad.shape}")
     # pdb.set_trace()
