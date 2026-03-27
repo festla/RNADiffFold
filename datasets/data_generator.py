@@ -222,7 +222,7 @@ class ParserData(object):
         data_seq_encode_list = list(map(lambda x: seq_encoding(x), data_seq_raw_list))    # 这一步就是把碱基字符串转为one-hot编码
         data_seq_encode_pad_list = list(map(lambda x: self.padding(x, T), data_seq_encode_list))
         data_seq_encode_pad_array = np.stack(data_seq_encode_pad_list, axis=0)
-        '''
+        
         print(f"contact_array.shape:{contact_array.shape}")             # contact_array.shape:(10794, 498, 498)堆叠在一起的contact
         print(f"data_fcn_2_array.shape:{data_fcn_2_array.shape}")       # data_fcn_2_array.shape:(10794, 498, 4)堆叠在一起的one-hot
         print(f"data_seq_raw_list.len:{len(data_seq_raw_list)}")        # data_seq_raw_list.len:10794 序列个数（字符串列表）
@@ -237,7 +237,7 @@ class ParserData(object):
         print(f"data_fcn_2_array[0].len: {len(data_fcn_2_array[0])}")
         #print(f"data_seq_encode_pad_list[0]: {data_seq_encode_pad_list[0]}")
         #print(f"data_seq_encode_pad_array[0]: {data_seq_encode_pad_array[0]}")
-        import pdb;pdb.set_trace()'''
+        pdb.set_trace()
         return contact_array, data_fcn_2_array, data_seq_raw_list, data_length_list, data_name_list, T, data_seq_encode_pad_array
 
 
@@ -248,6 +248,7 @@ class Dataset(data.Dataset):
             data_root: List[str],
             upsampling: bool = False
     ) -> None:
+        # self.debug_count = 0    # For test the shape of data
         self.data_root = data_root
         self.upsampling = upsampling
         if len(self.data_root) == 1:
@@ -357,6 +358,23 @@ class Dataset(data.Dataset):
             length  = item.length         # int 长度
             name    = item.name           # 名字
 
+        # test of the shape of data
+        """        
+        if self.debug_count < 2:
+            print("=" * 60)
+            print(f"index={index}, file_idx={fi}, local_idx={li}, mode={mode}")
+            print(f"name: {name}")
+            print(f"length: {length}, type={type(length)}")
+            print(f"seq_raw type: {type(seq_raw)}, len={len(seq_raw)}")
+            print(f"contact type: {type(contact)}, len={len(contact)}")
+            if len(contact) > 0:
+                print(f"contact[0]: {contact[0]}")
+            print(f"data_fcn_2 type: {type(data_fcn_2)}")
+            if hasattr(data_fcn_2, 'shape'):
+                print(f"data_fcn_2.shape: {data_fcn_2.shape}")
+            self.debug_count += 1
+            import pdb; pdb.set_trace()
+        """
         '''print(f"length: {length}")
         print(f"contact: {contact}")
         print(f"data_fcn_2: {data_fcn_2}")

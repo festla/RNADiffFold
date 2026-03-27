@@ -83,7 +83,7 @@ num_trainable = 0
 for name, p in model.named_parameters():
     if p.requires_grad:
         num_trainable += 1
-        print("[Trainable]", name)
+        # print("[Trainable]", name)
 print("Total trainable params:", num_trainable)
 
 # ================== optimizer ==================

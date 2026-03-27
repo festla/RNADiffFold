@@ -3,14 +3,14 @@
   "save_root_path": "./evaluation",
   "model_ckpt_path": "./logs/RNAStrAlign_160_multinomial_diffusion_adam/2025-11-21_09-50-00/check/best_checkpoint_65.pt",
   "seed": 1,
-  "device": "cuda:1",
-  "num_samples": 10,
+  "device": "cuda:0",
+  "num_samples": 1,
   "dry_run": true,
-  "round": 204,
+  "round": 2026032702,
 
   "data":
   {
-    "dataset": "RNAStrAlign",
+    "dataset": "archiveII",
     "batch_size": 2,
     "num_workers": 64,
     "pin_memory": false

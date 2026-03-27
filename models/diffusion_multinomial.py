@@ -191,9 +191,19 @@ class MultinomialDiffusion(nn.Module):
         B, L = log_x_t.size(0), log_x_t.size(-1)
         device = log_x_t.device
 
-        T = float(self.time_steps)
+        #==============0.线性增长==============
+        """T = float(self.time_steps)
         vis_frac = 1.0 - (t.float() / T)                 # t=0 -> 1.0, t=T-1 -> ~1/T
-        P = vis_frac * float(L)
+        P = vis_frac * float(L)""" 
+        #=====================================
+        
+        #==============1.前慢后快==================
+        T = float(self.time_steps)
+        s = (t.float() / T).clamp(0.0, 1.0)   # [B], 0..1
+        gamma = 0.5   # >1: 前慢后快（可试 1.5/2/3）   <1：前快后慢
+        vis_frac = 1.0 - torch.pow(s, gamma)  # [B]
+        P = vis_frac * float(L)  # 前慢后快
+        #=========================================
 
         beta_min, beta_max = 2.0, 12.0
         alpha = (t.float() / T).clamp(0.0, 1.0)               # [B], 0..1
@@ -338,15 +348,15 @@ class MultinomialDiffusion(nn.Module):
     def forward(self, x_0, fm_condition, u_condition, contact_masks, seq_encoding): # 
         batch, device = x_0.size(0), x_0.device
 
-        t, pt = self.sample_time(batch, device, 'importance')
-        log_x_0 = index_to_log_onehot(x_0, self.K)    # 把离散标签 x_0 变成 log-onehot
+        t, pt = self.sample_time(batch, device, 'importance')    # 每个样本随机抽一个扩散时间步 t 。
+        log_x_0 = index_to_log_onehot(x_0, self.K)    # 把离散标签 x_0 变成 log-onehot，即[B, 1, T, T] -> [B, k(2), 1, T, T]
         """print(f"x_0.shape: {x_0.shape}") x_0.shape: torch.Size([1, 1, 112, 112])
         print(f"fm_attention_map.shape: {fm_condition['fm_attention_map'].shape}") fm_attention_map.shape: torch.Size([1, 240, 112, 112])
         print(f"fm_embedding.shape: {fm_condition['fm_embedding'].shape}") fm_embedding.shape: torch.Size([1, 112, 640])
         print(f"u_condition.shape: {u_condition.shape}") u_condition.shape: torch.Size([1, 8, 112, 112])
         print(f"seq_encoding.shape: {seq_encoding.shape}") seq_encoding.shape: torch.Size([1, 112, 4])
         pdb.set_trace()"""
-        kl = self.compute_Lt(
+        kl = self.compute_Lt(    # 计算训练损失
             log_x_0=log_x_0,
             log_x_t=self.q_sample(log_x_0, t),    # 对 log_x_0 加噪得到 log_x_t
             fm_condition=fm_condition,

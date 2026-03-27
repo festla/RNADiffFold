@@ -40,7 +40,7 @@ class Experiment(DiffusionExperiment):
             if batch is None:
                 continue
 
-            (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) = batch
+            (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) = batch    # _ 是data_name,
             self.optimizer.zero_grad()
             contact = contact.to(device)
             data_fcn_2 = data_fcn_2.to(device)
@@ -49,11 +49,25 @@ class Experiment(DiffusionExperiment):
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
             contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
-            '''
-            print(f"contact.shape: {contact.shape}")
-            print(f"data_fcn_2.shape: {data_fcn_2.shape}")
-            print(f"matrix_rep.shape: {matrix_rep.shape}")
-            '''
+            
+            # For testing of data's shape
+            """
+            print(f"contact.shape: {contact.shape}")                     # [batch, 1, L, L]
+            print(f"data_fcn_2.shape: {data_fcn_2.shape}")               # [batch, 17,L, L]
+            print(f"matrix_rep.shape: {matrix_rep.shape}")               # [batch, 1, L, L]
+            print(f"data_seq_raw.shape: {data_seq_raw.shape}")           # [batch, L + BOS]这里已经是tokens了，不再是原始的碱基字符串
+            print(f"data_seq_raw[0]: {data_seq_raw[0]}")                 # [L + BOS]
+            print(f"set_max_len: {set_max_len}")                         # [L + BOS]
+            print(f"data_seq_encoding.shape: {data_seq_encoding.shape}") # [batch, L, 4]
+            print(f"contact_masks.shape: {contact_masks.shape}")         # [batch, 1, L, L]
+            pdb.set_trace()"""
+            """# data_length是真实长度，只是后续没有被模型用到
+            print(f"data_length[0]: {data_length[0]}")    # 98
+            print(f"data_length[1]: {data_length[1]}")    # 84
+            print(f"data_length[2]: {data_length[2]}")    # 143
+            print(f"data_length[3]: {data_length[3]}")    # 87
+            pdb.set_trace()"""
+
             """print(f"contact.shape: {contact.shape}")
             print(f"data_length[0]: {data_length[0]}")
             print(f"data_length[1]: {data_length[1]}")
@@ -62,9 +76,6 @@ class Experiment(DiffusionExperiment):
             print(f"set_max_len: {set_max_len}")
             pdb.set_trace()"""
             '''
-            print(f"data_seq_raw.shape: {data_seq_raw.shape}")
-            print(f"data_seq_encoding.shape: {data_seq_encoding.shape}")
-            print(f"contact_masks.shape: {contact_masks.shape}")
             pdb.set_trace()
             contact.shape: torch.Size([4, 1, 384, 384])
             data_fcn_2.shape: torch.Size([4, 17, 384, 384])

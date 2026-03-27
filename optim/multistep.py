@@ -25,8 +25,8 @@ def add_optim_args(parser):
 
     # Model params
     parser.add_argument('--optimizer', type=str, default='adam', choices=optim_choices)
-    parser.add_argument('--lr', type=float, default=1e-3)
-    parser.add_argument('--warmup', type=int, default=None)
+    parser.add_argument('--lr', type=float, default=1e-4)
+    parser.add_argument('--warmup', type=int, default=5)
     parser.add_argument('--momentum', type=float, default=0.9)
     parser.add_argument('--momentum_sqr', type=float, default=0.999)
     parser.add_argument('--milestones', type=eval, default=[])

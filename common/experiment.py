@@ -17,7 +17,7 @@ HOME = str(pathlib.Path.home())
 
 def add_exp_args(parser):
     # Train params
-    parser.add_argument('--epochs', type=int, default=10)
+    parser.add_argument('--epochs', type=int, default=400)
     parser.add_argument('--seed', type=int, default=1)
     parser.add_argument('--device', type=str, default='cuda:4')
     parser.add_argument('--parallel', type=str, default=None, choices={'dp'})

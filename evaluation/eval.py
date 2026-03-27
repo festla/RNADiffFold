@@ -17,11 +17,11 @@ import collections
 
 
 def evaluation(args, eval_model, dataloader):
-    eval_model.eval()
+    eval_model.eval()    # 将 model 的模式切换为 eval, 关闭dropout等行为
     device = args.device
 
 
-    with torch.no_grad():
+    with torch.no_grad():    # 不建立计算图， 推理更快
         test_no_train = list()
         total_name_list = list()
         total_length_list = list()
@@ -127,15 +127,15 @@ if __name__ == "__main__":
     config = parse_config('config.json')
     torch.manual_seed(config.seed)
     print('#'*10, f'Start evaluate {config.data.dataset}', '#'*10)
-    save_root_path = config.save_root_path
+    save_root_path = config.save_root_path    # 这里的保存路径我之前都没设置，导致一直在更新
     name = f'{config.project_name}.round_{config.round}.dataset_{config.data.dataset}.num_sample_{config.num_samples}'
     save_path = join(config.save_root_path, 'results', f'dataset_{config.data.dataset}', f'round_{config.round}')
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
-    model, alphabet = get_model_test(config.model)
+    model, alphabet = get_model_test(config.model)    # 这里先只负责搭起模型结构，还没加载权重
     RNA_SS_data = collections.namedtuple('RNA_SS_data', 'contact data_fcn_2 seq_raw length name')
-    test_loader = get_data_test(config.data, alphabet)
+    test_loader = get_data_test(config.data, alphabet)    # 构建 test 的 DataLoader
 
     # model load checkpoint
     print(f"Load model checkpoint from: {config.model_ckpt_path}")
@@ -148,7 +148,7 @@ if __name__ == "__main__":
     if not config.dry_run:
         wandb.init(project=config.project_name, name=name, config=config.toDict(), dir=save_path)
 
-    test_dict, result_df = evaluation(config, model, test_loader)
+    test_dict, result_df = evaluation(config, model, test_loader)    # 进入顶部的推理函数
 
     result_df.to_csv(join(save_path, f'{name}.csv'), index=False, header=True)
     test_metrics = log_eval_metrics(test_dict)

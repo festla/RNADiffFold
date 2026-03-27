@@ -19,11 +19,11 @@ cond_ckpt_path = './ckpt/cond_ckpt'
 
 def add_model_args(parser):
     # Model params
-    parser.add_argument('--diffusion_steps', type=int, default=1000)
+    parser.add_argument('--diffusion_steps', type=int, default=20)
     parser.add_argument('--num_classes', type=int, default=2)
     parser.add_argument('--diffusion_dim', type=int, default=8)
-    parser.add_argument('--cond_dim', type=int, default=1)
-    parser.add_argument('--dp_rate', type=float, default=0.)
+    parser.add_argument('--cond_dim', type=int, default=8)
+    parser.add_argument('--dp_rate', type=float, default=0.1)
     parser.add_argument('--u_conditioner_ckpt', type=str, default='ufold_train_alldata.pt')
 
 
@@ -131,15 +131,17 @@ class DiffusionRNA2dPrediction(nn.Module):
 
         u_condition = self.get_ufold_condition(data_fcn_2)
 
-        '''print(f"x_0.shape: {x_0.shape}")
+        """print(f"x_0.shape: {x_0.shape}")
         print(f"data_fcn_2.shape: {data_fcn_2.shape}")
         print(f"data_seq_raw.shape: {data_seq_raw.shape}")
         print(f"data_seq_encoding.shape: {data_seq_encoding.shape}")
         print(f"contact_masks.shape: {contact_masks.shape}")
+        print(f"fm_condition.shape: {fm_condition.shape}")
         print(f"fm_embedding: {fm_condition['fm_embedding'].shape}")
         print(f"fm_attention_map: {fm_condition['fm_attention_map'].shape}")
         print(f"u_condition: {u_condition.shape}")
-        pdb.set_trace()
+        pdb.set_trace()"""
+        '''
         x_0.shape: torch.Size([4, 1, 384, 384])
         data_fcn_2.shape: torch.Size([4, 17, 384, 384])
         data_seq_raw.shape: torch.Size([4, 372])
