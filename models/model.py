@@ -111,6 +111,63 @@ class DiffusionRNA2dPrediction(nn.Module):
             fm_condition['fm_attention_map'] = fm_attention_map
 
         return fm_condition
+    
+    # add positional factor matrix from PriFold 2026/3/28
+    def get_prior_factor(self, data_seq_raw, set_max_len, scale=0.0001):
+        device = data_seq_raw.device
+        prior_condition = dict()
+
+        seq_token = data_seq_raw[:, 1:-1]   # remove cls only and eos
+        B, L = seq_token.shape
+
+        token_A = self.alphabet.get_idx("A")
+        token_C = self.alphabet.get_idx("C")
+        token_G = self.alphabet.get_idx("G")
+        token_U = self.alphabet.get_idx("U")
+        token_pad = self.alphabet.padding_idx
+        token_eos = self.alphabet.eos_idx
+
+        # 先构造 raw score，默认全 1
+        raw_score = torch.ones(B, L, L, device=device, dtype=torch.float32)
+
+        A_mask = (seq_token == token_A)
+        C_mask = (seq_token == token_C)
+        G_mask = (seq_token == token_G)
+        U_mask = (seq_token == token_U)
+
+        invalid_mask = (seq_token == token_pad) | (seq_token == token_eos)
+
+        AU = A_mask.unsqueeze(2) & U_mask.unsqueeze(1)
+        UA = U_mask.unsqueeze(2) & A_mask.unsqueeze(1)
+        GC = G_mask.unsqueeze(2) & C_mask.unsqueeze(1)
+        CG = C_mask.unsqueeze(2) & G_mask.unsqueeze(1)
+        GU = G_mask.unsqueeze(2) & U_mask.unsqueeze(1)
+        UG = U_mask.unsqueeze(2) & G_mask.unsqueeze(1)
+
+        raw_score[GU | UG] = 1.0
+        raw_score[AU | UA] = 3.0
+        raw_score[GC | CG] = 6.0
+
+        prior_factor = 1.0 + scale * raw_score
+
+        # eos / pad 恢复中性
+        invalid_pair = invalid_mask.unsqueeze(2) | invalid_mask.unsqueeze(1)
+        prior_factor[invalid_pair] = 1.0
+
+        # |i-j| < 4 恢复中性
+        idx = torch.arange(L, device=device)
+        dist = torch.abs(idx.unsqueeze(0) - idx.unsqueeze(1))
+        sharp_loop_mask = dist < 4
+        prior_factor[:, sharp_loop_mask] = 1.0
+
+        prior_factor = prior_factor.unsqueeze(1)  # [B,1,L,L]
+
+        if L < set_max_len:
+            padding_size = (0, set_max_len - L, 0, set_max_len - L)
+            prior_factor = F.pad(prior_factor, padding_size, mode='constant', value=1.0)
+
+        prior_condition['prior_factor'] = prior_factor
+        return prior_condition
 
     def get_ufold_condition(self, data_fcn_2):
 
@@ -124,12 +181,16 @@ class DiffusionRNA2dPrediction(nn.Module):
                 data_seq_raw,
                 contact_masks,
                 set_max_len,
-                data_seq_encoding
+                data_seq_encoding,
                 ):
 
         fm_condition = self.get_fm_embedding(data_seq_raw, set_max_len)
 
         u_condition = self.get_ufold_condition(data_fcn_2)
+
+        # pri_condition = self.get_prior_factor(data_seq_raw, set_max_len)
+
+        # fm_condition.update(pri_condition)
 
         """print(f"x_0.shape: {x_0.shape}")
         print(f"data_fcn_2.shape: {data_fcn_2.shape}")

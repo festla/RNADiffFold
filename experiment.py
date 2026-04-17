@@ -7,7 +7,6 @@ import pandas as pd
 from common.utils import add_parent_path
 from common.experiment import add_exp_args as add_exp_args_parent
 from common.experiment import DiffusionExperiment
-from common.data_utils import contact_map_masks
 from common.loss_utils import bce_loss, evaluate_f1_precision_recall
 from common.loss_utils import calculate_auc, calculate_mattews_correlation_coefficient,rna_evaluation
 add_parent_path(level=2)
@@ -40,15 +39,16 @@ class Experiment(DiffusionExperiment):
             if batch is None:
                 continue
 
-            (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) = batch    # _ 是data_name,
+            (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding, valid_mask) = batch    # _ 是data_name,
             self.optimizer.zero_grad()
             contact = contact.to(device)
             data_fcn_2 = data_fcn_2.to(device)
-            matrix_rep = torch.zeros_like(contact)
             data_length = data_length.to(device)
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
-            contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
+            valid_mask = valid_mask.to(device)
+
+            contact_masks = valid_mask
             
             # For testing of data's shape
             """
@@ -123,13 +123,13 @@ class Experiment(DiffusionExperiment):
             for _, batch in enumerate(val_iter):
                 if batch is None:
                     continue
-                (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding) = batch
+                (contact, data_fcn_2, data_seq_raw, data_length, _, set_max_len, data_seq_encoding, valid_mask) = batch
                 data_fcn_2 = data_fcn_2.to(device)
-                matrix_rep = torch.zeros_like(contact)
                 data_length = data_length.to(device)
                 data_seq_raw = data_seq_raw.to(device)
                 data_seq_encoding = data_seq_encoding.to(device)
-                contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
+                valid_mask = valid_mask.to(device)
+                contact_masks = valid_mask
 
                 # calculate contact loss
                 batch_size = contact.shape[0]
@@ -175,18 +175,17 @@ class Experiment(DiffusionExperiment):
             total_name_list = list()
             total_length_list = list()
 
-            for _, (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding) in enumerate(
+            for _, (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding, valid_mask) in enumerate(
                     self.test_loader):
                 total_name_list += [item for item in data_name]
                 total_length_list += [item.item() for item in data_length]
 
                 data_fcn_2 = data_fcn_2.to(device)
-                matrix_rep = torch.zeros_like(contact)
                 data_length = data_length.to(device)
                 data_seq_raw = data_seq_raw.to(device)
                 data_seq_encoding = data_seq_encoding.to(device)
-                contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
-
+                valid_mask = valid_mask.to(device)
+                contact_masks = valid_mask
                 # calculate contact loss
                 batch_size = contact.shape[0]
                 pred_x0, _ = self.model.sample(batch_size, data_fcn_2, data_seq_raw, set_max_len, contact_masks, data_seq_encoding)

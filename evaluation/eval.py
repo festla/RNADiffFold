@@ -11,7 +11,6 @@ import wandb
 from tqdm import tqdm
 from .eval_utils import parse_config, get_data_test, get_model_test, vote4struct, clean_dict, log_eval_metrics, \
     save_metrics
-from common.data_utils import contact_map_masks
 from common.loss_utils import rna_evaluation
 import collections
 
@@ -37,21 +36,21 @@ def evaluation(args, eval_model, dataloader):
         for _, batch in enumerate(pbar):
             
             try:
-                # 尝试解包 batch
-                (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding) = batch
-            except TypeError as e:
-                # 如果解包失败，跳过当前 batch
+                (contact, data_fcn_2, data_seq_raw, data_length, data_name, set_max_len, data_seq_encoding, valid_mask) = batch
+            except Exception as e:
                 print(f"Skipping batch due to error: {e}")
-                continue  # 跳过这次循环，继续处理下一个 batch
+                continue
+
             total_name_list += [item for item in data_name]
             total_length_list += [item.item() for item in data_length]
 
             data_fcn_2 = data_fcn_2.to(device)
-            matrix_rep = torch.zeros_like(contact)
             data_length = data_length.to(device)
             data_seq_raw = data_seq_raw.to(device)
             data_seq_encoding = data_seq_encoding.to(device)
-            contact_masks = contact_map_masks(data_length, matrix_rep).to(device)
+            valid_mask = valid_mask.to(device)
+
+            contact_masks = valid_mask
             batch_size = contact.shape[0]
 
             # for multi conformations sampling
@@ -129,7 +128,7 @@ if __name__ == "__main__":
     print('#'*10, f'Start evaluate {config.data.dataset}', '#'*10)
     save_root_path = config.save_root_path    # 这里的保存路径我之前都没设置，导致一直在更新
     name = f'{config.project_name}.round_{config.round}.dataset_{config.data.dataset}.num_sample_{config.num_samples}'
-    save_path = join(config.save_root_path, 'results', f'dataset_{config.data.dataset}', f'round_{config.round}')
+    save_path = join(config.save_root_path, 'results', f'dataset_{config.data.dataset}', f'round_{config.round}', f'description_{config.description}')
     if not os.path.exists(save_path):
         os.makedirs(save_path, exist_ok=True)
 
@@ -150,7 +149,22 @@ if __name__ == "__main__":
 
     test_dict, result_df = evaluation(config, model, test_loader)    # 进入顶部的推理函数
 
+    # 1)逐样本指标
     result_df.to_csv(join(save_path, f'{name}.csv'), index=False, header=True)
+    # 2)整体平均指标
+    # overall_df = pd.DataFrame([test_dict])
+    # overall_df.to_csv(join(save_path, f'{name}_overall_metrics.csv'), index=False, header=True)
+    # 3) 再保存一份 txt，方便直接查看（指标 + config）
+    with open(join(save_path, f'{name}_overall_metrics.txt'), 'w', encoding='utf-8') as f:
+        f.write('===== Overall Metrics =====\n')
+        for k, v in test_dict.items():
+            f.write(f'{k}: {v}\n')
+
+        f.write('\n===== Config =====\n')
+        config_dict = config.toDict()
+        for k, v in config_dict.items():
+            f.write(f'{k}: {v}\n')
+
     test_metrics = log_eval_metrics(test_dict)
     if not config.dry_run:
         save_metrics(test_metrics, save_path)

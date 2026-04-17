@@ -18,8 +18,8 @@ HOME = str(pathlib.Path.home())
 def add_exp_args(parser):
     # Train params
     parser.add_argument('--epochs', type=int, default=400)
-    parser.add_argument('--seed', type=int, default=1)
-    parser.add_argument('--device', type=str, default='cuda:4')
+    parser.add_argument('--seed', type=int, default=2026)
+    parser.add_argument('--device', type=str, default='cuda:0')
     parser.add_argument('--parallel', type=str, default=None, choices={'dp'})
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--dry_run', action='store_true', default=False)
@@ -324,7 +324,7 @@ class BaseExperiment(object):
                     print(f'load best checkpoint:{self.early_stopping.save_name}')
                 else:
                     print('load last checkpoint')
-                test_dict, f1_pre_rec_df = self.test_fn(epoch)
+                test_dict, f1_pre_rec_df = self.test_fn(epoch)    # 这里不显示进度，和卡了一样，需要改进；
                 f1_pre_rec_df.to_csv(join(self.log_path, f'{self.save_name}.csv'), index=False, header=True)
                 self.log_test_metrics(test_dict)
                 # Log
@@ -370,7 +370,7 @@ class DiffusionExperiment(BaseExperiment):
             args.name = time.strftime("%Y-%m-%d_%H-%M-%S")
 
         if args.project is None:
-            args.project = 'rnadifffold'
+            args.project = 'Prefixdifffold'
 
         save_name = f'{args.name}.{args.dataset}.seed_{args.seed}.{time.strftime("%Y-%m-%d_%H-%M-%S")}'
         model.to(args.device)

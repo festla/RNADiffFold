@@ -185,71 +185,61 @@ class MultinomialDiffusion(nn.Module):
         return log_EV_xtmin_given_xt_given_xstart
 
     # x_0_hat
-    def predict_x_0(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
+    def predict_x_0(self, log_x_t, t, fm_condition, u_condition, seq_encoding, use_interval_guidance=False):
         x_t = log_onehot_to_index(log_x_t)
 
         B, L = log_x_t.size(0), log_x_t.size(-1)
         device = log_x_t.device
 
-        #==============0.线性增长==============
-        """T = float(self.time_steps)
-        vis_frac = 1.0 - (t.float() / T)                 # t=0 -> 1.0, t=T-1 -> ~1/T
-        P = vis_frac * float(L)""" 
-        #=====================================
-        
-        #==============1.前慢后快==================
-        T = float(self.time_steps)
-        s = (t.float() / T).clamp(0.0, 1.0)   # [B], 0..1
-        gamma = 0.5   # >1: 前慢后快（可试 1.5/2/3）   <1：前快后慢
-        vis_frac = 1.0 - torch.pow(s, gamma)  # [B]
-        P = vis_frac * float(L)  # 前慢后快
-        #=========================================
+        if use_interval_guidance:
+            mask_1d, mask_2d = self._build_prefix_masks(t, L, device)   # [B,L], [B,1,L,L]
+        else:
+            mask_1d = torch.ones((B, L), device=device, dtype=torch.float32)
+            mask_2d = torch.ones((B, 1, L, L), device=device, dtype=torch.float32)
 
-        beta_min, beta_max = 2.0, 12.0
-        alpha = (t.float() / T).clamp(0.0, 1.0)               # [B], 0..1
-        beta = beta_max - (beta_max - beta_min) * alpha       # [B]
-        
-        idx = torch.arange(L, device=device, dtype=torch.float32).view(1, L)
-        g = torch.sigmoid((P.view(B, 1) - (idx + 0.5)) * beta.view(B, 1))     # [B, L]
-        #   稳定性保护：避免出现所有位置都接近 0
-        g = torch.clamp(g, min=1e-4, max=1.0)
+        g_seq = mask_1d.unsqueeze(-1)
+        g_2d = mask_2d
 
-        # ========= 1) 对 seq_encoding 统一掩码：masked = g * x + (1-g) * mask_token =========
+        # ========= 1) seq_encoding：early 全 masked，中期前缀生长，late 全长 =========
         if seq_encoding is None:
             seq_enc_masked = None
         else:
             D_seq = seq_encoding.size(-1)
-            if self.seq_mask_token.numel() != D_seq:
-                self.seq_mask_token = nn.Parameter(
-                    torch.zeros(D_seq, dtype=seq_encoding.dtype, device=seq_encoding.device)
-                )
+            assert self.seq_mask_token.numel() == D_seq, \
+                f"seq_mask_token dim mismatch: {self.seq_mask_token.numel()} vs {D_seq}"
 
-            g_seq = g.unsqueeze(-1)  # [B, L, 1]
-            seq_enc_masked = seq_encoding * g_seq + \
-                            (1.0 - g_seq) * self.seq_mask_token.view(1, 1, -1)
+            seq_mask_token = self.seq_mask_token.to(dtype=seq_encoding.dtype, device=seq_encoding.device)
 
-                            
-        # ========= 2) 对 fm_embedding 统一掩码： =========
-        fm_embed = fm_condition['fm_embedding']  # [B, L, D_fm]
-        D_fm = fm_embed.size(-1)
-        if self.fm_mask_token.numel() != D_fm:
-            self.fm_mask_token = nn.Parameter(
-                torch.zeros(D_fm, dtype=fm_embed.dtype, device=fm_embed.device)
+            seq_enc_masked = (
+                seq_encoding * g_seq
+                + (1.0 - g_seq) * seq_mask_token.view(1, 1, -1)
             )
+        # ========= 2) fm_embedding：同样三段式 =========
+        fm_embed = fm_condition['fm_embedding']   # [B, L, D_fm]
+        D_fm = fm_embed.size(-1)
+        assert self.fm_mask_token.numel() == D_fm, \
+            f"fm_mask_token dim mismatch: {self.fm_mask_token.numel()} vs {D_fm}"
 
-        g_fm = g.unsqueeze(-1)
-        fm_embed_masked = fm_embed * g_fm + \
-                        (1.0 - g_fm) * self.fm_mask_token.view(1, 1, -1)
+        fm_mask_token = self.fm_mask_token.to(dtype=fm_embed.dtype, device=fm_embed.device)
 
-        # 将 masked 的 fm_embedding 回填入 condition
+        fm_embed_masked = (
+            fm_embed * g_seq
+            + (1.0 - g_seq) * fm_mask_token.view(1, 1, -1)
+        )
+
         fm_cond_masked = dict(fm_condition)
         fm_cond_masked['fm_embedding'] = fm_embed_masked
-        # **** 以上是对fm_embedding做掩码生长****
 
+
+        # ========= 3) 全局信息：early / middle / late 都保留 =========
+        # 你现在的设定是：
+        # 前期不给序列，只给全局信息
+        # 所以这些 attention_map/global 条件先保持原样
         if 'fm_attention_map' in fm_condition:
-            fm_cond_masked['fm_attention_map'] = fm_condition['fm_attention_map']  # 原样保留
-        
-        u_cond_masked = u_condition  # u_condition 保持原样
+            fm_cond_masked['fm_attention_map'] = fm_condition['fm_attention_map']
+
+        # u_condition 作为全局/2D信息，保持原样
+        u_cond_masked = u_condition
 
         # 4) 调用去噪网络
         out = self._denoise_fn(t, x_t, fm_cond_masked, u_cond_masked, seq_enc_masked)
@@ -263,8 +253,8 @@ class MultinomialDiffusion(nn.Module):
         return log_pred
 
     # p(xt-1|xt)
-    def p_pred(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
-        log_x_0_hat = self.predict_x_0(log_x_t, t, fm_condition, u_condition, seq_encoding)   # [B, 2, 1, L, L]
+    def p_pred(self, log_x_t, t, fm_condition, u_condition, seq_encoding, use_interval_guidance=False):
+        log_x_0_hat = self.predict_x_0(log_x_t, t, fm_condition, u_condition, seq_encoding, use_interval_guidance=use_interval_guidance)   # [B, 2, 1, L, L]
         log_probs = self.q_posterior(log_x_t, log_x_0_hat, t)    # log_x_t.shape=[B, 1, L, L]
         return log_probs
 
@@ -276,8 +266,8 @@ class MultinomialDiffusion(nn.Module):
 
     # p(xt-1|xt) -> xt-1
     @torch.no_grad()
-    def p_sample(self, log_x_t, t, fm_condition, u_condition, seq_encoding):
-        log_probs = self.p_pred(log_x_t, t, fm_condition, u_condition, seq_encoding)
+    def p_sample(self, log_x_t, t, fm_condition, u_condition, seq_encoding, use_interval_guidance=False):
+        log_probs = self.p_pred(log_x_t, t, fm_condition, u_condition, seq_encoding,use_interval_guidance=use_interval_guidance)
         x_t_minus_1 = self.log_sample_categorical(log_probs)
         return x_t_minus_1, log_probs
 
@@ -301,18 +291,23 @@ class MultinomialDiffusion(nn.Module):
             t=t,
             fm_condition=fm_condition,
             u_condition=u_condition * contact_masks,
-            seq_encoding=seq_encoding
+            seq_encoding=seq_encoding,
+            use_interval_guidance=False
         )
 
         if detach_mean:
             log_model_prob = log_model_prob.detach()
+        
+        # contact_masks: [B,1,L,L]
+        valid_mask = contact_masks.to(dtype=log_model_prob.dtype)
+
         # L_{t-1}, denoising matching term
-        kl = self.multinomial_kl(log_true_prob, log_model_prob)
-        kl = sum_except_batch(kl)
+        kl_map = self.multinomial_kl(log_true_prob, log_model_prob)
+        kl = sum_except_batch(kl_map * valid_mask)
 
         # L_0,reconstruction term,decoder
-        decoder_nll = -log_categorical(log_x_0, log_model_prob)
-        decoder_nll = sum_except_batch(decoder_nll)
+        decoder_nll_map = -log_categorical(log_x_0, log_model_prob)
+        decoder_nll = sum_except_batch(decoder_nll_map * valid_mask)
 
         mask = (t == torch.zeros_like(t)).float()
         loss = mask * decoder_nll + (1. - mask) * kl
@@ -397,7 +392,8 @@ class MultinomialDiffusion(nn.Module):
                                                   t=t,
                                                   fm_condition=fm_condition,
                                                   u_condition=u_condition * contact_masks,
-                                                  seq_encoding=seq_encoding)
+                                                  seq_encoding=seq_encoding,
+                                                  use_interval_guidance=False)
 
         model_prob = torch.exp(model_log_prob)[:, 1, :, :, :] * contact_masks
         return log_onehot_to_index(log_z) * contact_masks, model_prob
@@ -424,33 +420,79 @@ class MultinomialDiffusion(nn.Module):
                                                   t=t,
                                                   fm_condition=fm_condition,
                                                   u_condition=u_condition * contact_masks,
-                                                  seq_encoding=seq_encoding)
+                                                  seq_encoding=seq_encoding,
+                                                  use_interval_guidance=False)
 
             z_probs[i] = torch.exp(model_log_prob)[:, 1, :, :, :] * contact_masks
             zs[i] = log_onehot_to_index(log_z) * contact_masks
 
         return zs, z_probs, zs[-1], z_probs[-1]
 
-    def _time_to_prefix_len(self, t: torch.Tensor, L: int) -> torch.Tensor:
-        """
-        t: (B,) 当前时间步(0..T-1)；当你在采样时也会传入 T-1..0
-        返回: (B,) 每个样本的可见前缀长度 P(t)
-        线性日程: P(t) = ceil(L * (1 - t/T))
-        """
-        T = float(self.time_steps)
-        vis_frac = 1.0 - (t.float() / T)              # t=0 -> 1.0, t=T -> 0.0
-        P = torch.clamp((vis_frac * L).ceil(), min=0, max=L).long()
-        return P
+    def _build_prefix_masks(self, t: torch.Tensor, L: int, device):
+        P = self._time_to_prefix_len_three_stage(
+            t, L=L, low_frac=0.20, high_frac=0.65, mid_start_ratio=0.10, update_every=2
+        )  # [B]
 
-    def _build_prefix_masks(self, t: torch.Tensor, L: int, device) -> tuple:
-        """
-        构造 1D/2D 前缀掩码。
-        1D: (B, L)     2D: (B, 1, L, L)
-        """
-        B = t.size(0)
-        P = self._time_to_prefix_len(t, L=L)          # (B,)
-        idx = torch.arange(L, device=device).view(1, L)         # (1, L)
-        mask_1d = (idx < P.view(-1, 1)).float()                 # (B, L)
-        # 2D 前缀 = 前缀×前缀的外积；再扩一维给通道对齐 (B,1,L,L)
-        mask_2d = (mask_1d.unsqueeze(2) * mask_1d.unsqueeze(1)).unsqueeze(1)
+        idx = torch.arange(L, device=device).view(1, L)
+        mask_1d = (idx < P.view(-1, 1)).float()  # [B, L]
+        mask_2d = (mask_1d.unsqueeze(2) * mask_1d.unsqueeze(1)).unsqueeze(1)  # [B,1,L,L]
         return mask_1d, mask_2d
+
+    def stage_masks(self, t: torch.Tensor, low_frac=0.20, high_frac=0.65):
+
+        Tm1 = max(self.time_steps-1, 1)
+        s = t.float() / float(Tm1)
+
+        early_mask = s > high_frac
+        middle_mask = (s >= low_frac) & (s <= high_frac)
+        late_mask = s < low_frac
+
+        return early_mask, middle_mask, late_mask
+
+    def _time_to_prefix_len_three_stage(
+        self,
+        t: torch.Tensor,
+        L: int,
+        low_frac: float = 0.20,
+        high_frac: float = 0.65,
+        mid_start_ratio: float = 0.10,
+        update_every: int = 2,
+    ):
+        """
+        三段式：
+        - early:  P = 0
+        - middle: P 从 mid_start_ratio * L 逐步增长到 L
+        - late:   P = L
+        """
+        device = t.device
+        B = t.size(0)
+        Tm1 = max(self.time_steps - 1, 1)
+        s = t.float() / float(Tm1)   # 0..1, 小=late, 大=early
+
+        P = torch.zeros_like(t, dtype=torch.long, device=device)
+
+        # late: full length
+        late_mask = s < low_frac
+        P = torch.where(late_mask, torch.full_like(P, L), P)
+
+        # middle: prefix growth
+        middle_mask = (s >= low_frac) & (s <= high_frac)
+        if middle_mask.any():
+            prog = ((high_frac - s) / (high_frac - low_frac)).clamp(0.0, 1.0)  # 0->1
+
+            # interval 化：阶梯式更新
+            n_mid_steps = max(int(round((high_frac - low_frac) * Tm1)), 1)
+            n_updates = max(n_mid_steps // max(update_every, 1) + 1, 1)
+
+            if n_updates > 1:
+                prog = torch.floor(prog * (n_updates - 1 + 1e-8)) / float(n_updates - 1)
+            else:
+                prog = torch.zeros_like(prog)
+
+            P_mid = torch.round((mid_start_ratio * L) + prog * (L - mid_start_ratio * L)).long()
+            P_mid = P_mid.clamp(min=1, max=L)
+
+            P = torch.where(middle_mask, P_mid, P)
+
+        # early 默认保持 0
+        return P

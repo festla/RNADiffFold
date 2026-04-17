@@ -28,9 +28,6 @@ set_seeds(args.seed)
 model_id = get_model_id(args)
 model, alphabet = get_model(args)
 
-if getattr(args, "parallel", None) == "dp":
-    model = torch.nn.DataParallel(model)
-
 # ================== data ==================
 data_id = get_data_id(args)
 RNA_SS_data = collections.namedtuple('RNA_SS_data',

@@ -297,6 +297,13 @@ class SegmentationUnet2DCondition(nn.Module):
             nn.Linear(64, 8)
         )
 
+        # lql added primatrix   8 channel temly
+        """self.prior_cond = nn.Sequential(
+            nn.Conv2d(1, 8, kernel_size=1),
+            Mish(),
+            nn.Conv2d(8, 8, kernel_size=1)
+        )"""
+
         self.fm_cond = nn.Sequential(
             nn.Linear(16, 48),
             Mish(),
@@ -304,7 +311,7 @@ class SegmentationUnet2DCondition(nn.Module):
         )
 
         self.x_mlp = nn.Sequential(
-            nn.Linear(48, 64),
+            nn.Linear(48, 64),  # add from pri
             Mish(),
             nn.Linear(64, self.dim)
         )
@@ -368,6 +375,17 @@ class SegmentationUnet2DCondition(nn.Module):
 
         fm_embedding = self.fm_cond_1(fm_condition['fm_embedding']).permute(0, 2, 1)    # [B, T, 640]->[B, L, 8]->[B, 8, T]
         fm_attention_map = self.fm_cond_2(fm_condition['fm_attention_map'].permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
+
+        # prior_factor = fm_condition.get('prior_factor', None) # add from pri
+        # print(f"prior_factor: {prior_factor}")
+        # pdb.set_trace()
+        """if prior_factor is not None:
+            prior_feat = self.prior_cond(prior_factor)   # [B, 8, H, W]
+        else:
+            prior_feat = torch.zeros_like(u_condition)   # [B, 8, H, W]"""
+
+
+
         cond_L = fm_embedding.size(-1)    # cond_L = T
 
         fm_out_cat = torch.cat([fm_embedding.unsqueeze(-1).repeat(1, 1, 1, cond_L),
@@ -380,11 +398,20 @@ class SegmentationUnet2DCondition(nn.Module):
         print(f"seq_out_cat.shape: {seq_out_cat.shape}")
         print(f"u_condition.shape: {u_condition.shape}")
         pdb.set_trace()"""
+        """
+        print("x:", x.shape)
+        print("fm_out_cat:", fm_out_cat.shape)
+        print("fm_attention_map:", fm_attention_map.shape)
+        print("seq_out_cat:", seq_out_cat.shape)
+        print("u_condition:", u_condition.shape)
+        print("prior_feat:", prior_feat.shape)
+        pdb.set_trace()"""
         x = self.x_mlp(torch.cat([x,
                                   fm_out_cat,
                                   fm_attention_map,
                                   seq_out_cat,
                                   u_condition,
+                                  # prior_feat,
                                   ], dim=1).permute(0, 2, 3, 1)).permute(0, 3, 1, 2)
 
         t = self.to_time_cond(time)

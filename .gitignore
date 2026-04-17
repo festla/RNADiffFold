@@ -1,6 +1,10 @@
 .idea/
 logs/
 data/
+ckpt/
 *.pt
 *.pth
 *.csv
+fm_vis/
+GroundTruth/
+evaluation/results

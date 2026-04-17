@@ -1,18 +1,19 @@
 {
   "project_name": "evaluation",
   "save_root_path": "./evaluation",
-  "model_ckpt_path": "./logs/RNAStrAlign_160_multinomial_diffusion_adam/2025-11-21_09-50-00/check/best_checkpoint_65.pt",
-  "seed": 1,
-  "device": "cuda:0",
-  "num_samples": 1,
+  "model_ckpt_path": "./logs/bpRNA_160_multinomial_diffusion_adam/20260413_seq_emb_grow_interval_train_and_sample_validmask_2/check/best_checkpoint_95.pt",
+  "seed": 20260416,
+  "device": "cuda:1",
+  "num_samples": 10,
   "dry_run": true,
-  "round": 2026032702,
+  "round": 2026040416,
+  "description": "interval_validmask_checkpoint_95_eval",
 
   "data":
   {
-    "dataset": "archiveII",
-    "batch_size": 2,
-    "num_workers": 64,
+    "dataset": "bpRNA",
+    "batch_size": 4,
+    "num_workers": 32,
     "pin_memory": false
   },
 
