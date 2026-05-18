@@ -10,9 +10,9 @@ from common.utils import get_args_table, get_metric_table, clean_dict
 from torch.utils.tensorboard import SummaryWriter
 import wandb
 
-import pathlib
+from pathlib import Path
 
-HOME = str(pathlib.Path.home())
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def add_exp_args(parser):
@@ -358,7 +358,7 @@ class DiffusionExperiment(BaseExperiment):
 
         # 这里指定了日志的根目录
         if args.log_home is None:
-            self.log_base = join(HOME, 'lql', 'RNADiffFold', 'logs')
+            self.log_base = str(PROJECT_ROOT / "logs")
         else:
             self.log_base = join(args.log_home, 'logs', 'rnadifffold')
 

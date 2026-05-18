@@ -18,7 +18,7 @@ def add_data_args(parser):
     # Train params
     parser.add_argument('--batch_size', type=int, default=1)
     parser.add_argument('--eval_batch_size', type=int, default=1)
-    parser.add_argument('--num_workers', type=int, default=64)
+    parser.add_argument('--num_workers', type=int, default=48)
     parser.add_argument('--pin_memory', type=eval, default=False)
 
     # === 新增：数据增强 & label smoothing 的可选参数 ===
@@ -37,21 +37,20 @@ def get_data(args, alphabet):
     assert args.dataset in dataset_choices
 
     if args.dataset == 'RNAStrAlign':
-        train = Dataset([join(ROOT_PATH, args.dataset, 'train')], upsampling=True)
-        val = Dataset([join(ROOT_PATH, args.dataset, 'val')])
+        train = Dataset([join(ROOT_PATH, args.dataset, 'train')], upsampling=False, max_len=490)
+        val = Dataset([join(ROOT_PATH, args.dataset, 'val')], max_len=490)
         test = Dataset([join(ROOT_PATH, args.dataset, 'test'),
-                        join(ROOT_PATH,'archiveII')])
+                        join(ROOT_PATH,'archiveII')], max_len=490)
 
     elif args.dataset == 'bpRNA':
-        train = Dataset([join(ROOT_PATH, args.dataset, 'TR0')], upsampling=True)
-        val = Dataset([join(ROOT_PATH, args.dataset, 'VL0')])
-        test = Dataset([join(ROOT_PATH, args.dataset, 'TS0'),
-                        join(ROOT_PATH, 'bpRNAnew')])
+        train = Dataset([join(ROOT_PATH, args.dataset, 'TR0')], upsampling=False, max_len=500)
+        val = Dataset([join(ROOT_PATH, args.dataset, 'VL0')], max_len=500)
+        test = Dataset([join(ROOT_PATH, args.dataset, 'TS0')], max_len=500)
 
     elif args.dataset == 'bpRNAnew':
-        train = Dataset([join(ROOT_PATH, args.dataset, 'mutate')], upsampling=True)
-        val = Dataset([join(ROOT_PATH, 'bpRNA', 'VL0')])
-        test = Dataset([join(ROOT_PATH, args.dataset, 'bpRNAnew')])
+        train = Dataset([join(ROOT_PATH, args.dataset, 'mutate')], upsampling=True, max_len=490)
+        val = Dataset([join(ROOT_PATH, 'bpRNA', 'VL0')], max_len=490)
+        test = Dataset([join(ROOT_PATH, args.dataset, 'bpRNAnew')], max_len=490)
     elif args.dataset == 'pdbnew':
         train = Dataset([join(ROOT_PATH, args.dataset, 'TR1')], upsampling=True)
         val = Dataset([join(ROOT_PATH, args.dataset, 'VL1')])

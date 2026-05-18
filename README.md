@@ -1,4 +1,4 @@
-# RNADiffFold: Generative RNA Secondary Structure Prediction using Discrete Diffusion Models
+# Official implementation of "PrefixDiffFold"
 ![fig_1](/figures/fig1_overview.png)
 ## Abstract
 RNA molecules are essential macromolecules that perform diverse biological functions in living beings. Precise prediction of RNA secondary structures is instrumental in deciphering their complex three-dimensional architecture and functionality. Traditional methodologies for RNA structure prediction, including energy-based and learning-based approaches, often depict RNA secondary structures from a static perspective and rely on stringent a priori constraints. Inspired by the success of diffusion models, in this work, we introduce RNADiffFold, an innovative generative prediction approach of RNA secondary structures based on multinomial diffusion. We reconceptualize the prediction of contact maps as akin to pixel-wise segmentation and accordingly train a denoising model to refine the contact maps starting from a noise-infused state progressively. We also devise a potent conditioning mechanism that harnesses features extracted from RNA sequences to steer the model toward generating an accurate secondary structure. These features encompass one-hot encoded sequences, probabilistic maps generated from a pre-trained scoring network, and embeddings and attention maps derived from RNA-FM. Experimental results on both within- and cross-family datasets demonstrate RNADiffFold's competitive performance compared with current state-of-the-art methods. Additionally, RNADiffFold has shown a notable proficiency in capturing the dynamic aspects of RNA structures, a claim corroborated by its performance on datasets comprising multiple conformations.
@@ -33,25 +33,22 @@ Then, run the following command to train the model:
 
 ```bash
 python train.py --device cuda:0
-                --diffusion_dim 8
-                --diffusion_steps 20
-                --cond_dim 8
-                --dataset all
-                --batch_size 1
+                --dataset bpRNA
+                --batch_size 4
                 --dp_rate 0.1
                 --lr 0.0001
                 --warmup 5
-                --seed 2023
+                --seed 2026
                 --log_wandb True
                 --epochs 400
-                --eval_every 20
+                --eval_every 5
                 -u_conditioner_ckpt ufold_train_alldata.pt
 ```
 ### Evaluating 
 We provide the test script for user to evaluate the prediction result using the following command:
 
 ```bash
-python evaluation/eval.py
+python -m evaluation.eval
 ```
 
 The predict results for each sequence will be stored in the `./evaluation/results` directory.

@@ -22,6 +22,13 @@ def add_model_args(parser):
     parser.add_argument('--diffusion_steps', type=int, default=20)
     parser.add_argument('--num_classes', type=int, default=2)
     parser.add_argument('--diffusion_dim', type=int, default=8)
+    parser.add_argument('--use_interval_guidance', action='store_true')
+    parser.add_argument('--growth_mode', type=str, default='forward', choices=['forward', 'reverse', 'random'], 
+        help='growth mode for interval guidance: forward, reverse, or random'
+    )
+    parser.add_argument('--random_growth_seed', type=int, default=1234)
+    parser.add_argument('--no_use_interval_guidance', dest='use_interval_guidance', action='store_false')
+    parser.set_defaults(use_interval_guidance=True)
     parser.add_argument('--cond_dim', type=int, default=8)
     parser.add_argument('--dp_rate', type=float, default=0.1)
     parser.add_argument('--u_conditioner_ckpt', type=str, default='ufold_train_alldata.pt')
@@ -38,7 +45,10 @@ class DiffusionRNA2dPrediction(nn.Module):
                  cond_dim,
                  diffusion_steps,
                  dp_rate,
-                 u_ckpt
+                 u_ckpt,
+                 use_interval_guidance,
+                 growth_mode='forward',
+                 random_growth_seed=1234
                  ):
         super(DiffusionRNA2dPrediction, self).__init__()
 
@@ -48,6 +58,9 @@ class DiffusionRNA2dPrediction(nn.Module):
         self.diffusion_steps = diffusion_steps
         self.dp_rate = dp_rate
         self.u_ckpt = u_ckpt
+        self.use_interval_guidance = use_interval_guidance
+        self.growth_mode = growth_mode
+        self.random_growth_seed = random_growth_seed
 
 
         # condition
@@ -68,7 +81,10 @@ class DiffusionRNA2dPrediction(nn.Module):
         self.diffusion = MultinomialDiffusion(
             self.num_classes,
             self.diffusion_steps,
-            self.denoise_layer
+            self.denoise_layer,
+            self.use_interval_guidance,
+            growth_mode=self.growth_mode,
+            random_growth_seed=self.random_growth_seed,
         )
 
     def load_u_conditioner(self):
@@ -262,7 +278,10 @@ def get_model(args):
         cond_dim=args.cond_dim,
         diffusion_steps=args.diffusion_steps,
         dp_rate=args.dp_rate,
-        u_ckpt=args.u_conditioner_ckpt
+        u_ckpt=args.u_conditioner_ckpt,
+        use_interval_guidance=args.use_interval_guidance,
+        growth_mode=args.growth_mode,
+        random_growth_seed=args.random_growth_seed
     )
     alphabet = model.get_alphabet()
     return model, alphabet

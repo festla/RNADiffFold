@@ -174,11 +174,13 @@ class Dataset(data.Dataset):
     def __init__(
             self,
             data_root: List[str],
-            upsampling: bool = False
+            upsampling: bool = False,
+            max_len: int = None    # as PriFold
     ) -> None:
         # self.debug_count = 0    # For test the shape of data
         self.data_root = data_root
         self.upsampling = upsampling
+        self.max_len = max_len
         if len(self.data_root) == 1:
             samples = self.make_dataset(self.data_root[0])
         elif len(self.data_root) > 1:
@@ -222,6 +224,9 @@ class Dataset(data.Dataset):
             self.file_modes.append(mode)
 
             for li, L in enumerate(lens):
+                L = int(L)
+                if self.max_len is not None and L >= max_len:
+                    continue
                 self.index.append((fi, li, int(L)))
 
         if self.upsampling:

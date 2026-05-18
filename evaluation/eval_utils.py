@@ -83,16 +83,16 @@ def get_data_test(args, alphabet):
     assert args.dataset in dataset_choices
 
     if args.dataset == 'RNAStrAlign':
-        test = Dataset([join(DATA_ROOT_PATH, args.dataset, 'test')])
+        test = Dataset([join(DATA_ROOT_PATH, args.dataset, 'test')], max_len=490)
 
     elif args.dataset == 'archiveII':
-        test = Dataset([join(DATA_ROOT_PATH, args.dataset)])
+        test = Dataset([join(DATA_ROOT_PATH, args.dataset)], max_len=490)
 
     elif args.dataset == 'bpRNA':
-        test = Dataset([join(DATA_ROOT_PATH, args.dataset, 'TS0')])
+        test = Dataset([join(DATA_ROOT_PATH, args.dataset, 'TS0')], max_len=490)
 
     elif args.dataset == 'bpRNAnew':
-        test = Dataset([join(DATA_ROOT_PATH, 'bpRNAnew')])
+        test = Dataset([join(DATA_ROOT_PATH, 'bpRNAnew')], max_len=490)
 
     elif args.dataset == 'PDB_TS1':
         test = Dataset([join(DATA_ROOT_PATH, 'pdbnew', 'TS1')])
@@ -126,13 +126,15 @@ def get_data_test(args, alphabet):
 
 
 def get_model_test(args):
+    use_interval_guidance = True
     model = DiffusionRNA2dPrediction(
         num_classes=args.num_classes,
         diffusion_dim=args.diffusion_dim,
         cond_dim=args.cond_dim,
         diffusion_steps=args.diffusion_steps,
         dp_rate=args.dp_rate,
-        u_ckpt=args.u_conditioner_ckpt
+        u_ckpt=args.u_conditioner_ckpt,
+        use_interval_guidance=use_interval_guidance
     )
 
     alphabet = model.get_alphabet()
